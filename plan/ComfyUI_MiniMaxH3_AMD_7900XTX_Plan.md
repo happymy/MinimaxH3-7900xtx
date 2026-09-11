@@ -7,7 +7,7 @@
 >
 > 2026-09 路线变更（本次更新）：
 > - **弃用** leejet 仓库 + nicolab28 独立 `ComfyUI-ClipProj` 节点；
-> - **改用** Molbal 官方 GGUF 三件套（`molbal/MiniMax-H3-GGUF` workflows）+ CCTech 内置 `ClipProjLoader`；
+> - **改用** GGUF 三件套（模型来自 `molbal/MiniMax-H3-GGUF`，工作流模板来自 Molbal `ComfyUI-GGUF` = 现 CCTech `ComfyUI-GGUF-Loader`）+ CCTech 内置 `CCTechClipProjLoader`；
 > - 32B NVFP4/AWQ safetensors CLIP（Blackwell 格式，AMD 不可用）换成 4B GGUF + 投影矩阵。
 > - **2026-09-09 新增**：co-residency 抖动根因确认（issue Comfy-Org/ComfyUI#15484 / #15453）+ 自建 `ForceUnloadBeforeDecode`
 >   卸载节点，采样前/解码前两段手动清场（详见 §9 与 §10.4）。
@@ -21,9 +21,9 @@
 | ComfyUI | 0.34.0（`ComfyUI_windows_portable`） |
 | 推理后端 | `torch 2.9.1+rocm7.2.1` / HIP 7.2.53211，识别为 AMD RX 7900 XTX（ROCm，非 CUDA） |
 | 启动脚本 | `run_amd_gpu.bat`、`run_amd_gpu_enable_dynamic_vram.bat`（均存在） |
-| GGUF 加载器 | **CCTech Suite**（`ComfyUI-GGUF-Loader` v2.16.7）已装，注册 `UnetLoaderGGUF` / `CLIPLoaderGGUF` / **`ClipProjLoader`**（`nodes/extra.py:74`，CLIPLoaderGGUF 子类，可一次性「加载 GGUF 文本塔 + 应用投影矩阵」，输出 CLIP），纯 torch+`gguf` 包解包（无 llama.cpp），内置 MiniMax H3 支持。⚠️ **已修复**：import 链上的 `krea2.py→vendor/depth_anything_v2.py` 缺 `cv2` 曾导致整包被 ComfyUI 跳过，已向 `python_embeded` 装 `opencv-python-headless`（阿里云源），现 73 节点正常注册 |
+| GGUF 加载器 | **CCTech Suite**（`ComfyUI-GGUF-Loader` v2.16.7）已装，注册 `UnetLoaderGGUF` / `CLIPLoaderGGUF` / **`CCTechClipProjLoader`**（`nodes/extra.py:74`，CLIPLoaderGGUF 子类，可一次性「加载 GGUF 文本塔 + 应用投影矩阵」，输出 CLIP），纯 torch+`gguf` 包解包（无 llama.cpp），内置 MiniMax H3 支持。⚠️ **已修复**：import 链上的 `krea2.py→vendor/depth_anything_v2.py` 缺 `cv2` 曾导致整包被 ComfyUI 跳过，已向 `python_embeded` 装 `opencv-python-headless`（阿里云源），现 73 节点正常注册 |
 | 编码器 | `text_encoders/qwen3-vl-4b-heretic-Q4_K_M.gguf`（~2.3GB 文本塔）+ 配套 `text_encoders/qwen3-vl-4b-heretic.mmproj-f16.gguf`（836MB 视觉塔，CCTech loader 自动合并，详见 §10.3） |
-| 扩散模型 | `diffusion_models/minimax_h3_fl2va_pruned-Q4_K_M.gguf`、`ref2va_pruned-Q4_K_M.gguf`（均已在 `diffusion_models\`，共 ~21.8GB；**未放 `models\unet\`，若节点读不到需复制一份**） |
+| 扩散模型 | `diffusion_models/minimax_h3_fl2va_pruned-Q4_K_M.gguf`、`ref2va_pruned-Q4_K_M.gguf`（均已在 `diffusion_models\`，共 ~22.8GB 十进制；**实测 `UnetLoaderGGUF` 直接读得到，无需复制到 `models\unet\`**） |
 | 投影矩阵 | `clip_projections/mmh3-4b-ClipProj-v3.1.safetensors`（25.0MB） |
 | VAE | `vae/minimax_h3_video_vae_fp16.safetensors`（5.2GB）、`vae/minimax_h3_audio_vae_fp32.safetensors`（0.6GB） |
 
@@ -44,11 +44,11 @@ cond = ((h - mean_in) / std_in) @ W * std_out + mean_out
 
 - 手头 `qwen3-vl-4b-heretic-Q4_K_M.gguf` 正好作 4B 编码器（同 tokenizer，位置一一对应）。
 - **投影矩阵**：`clip_projections/mmh3-4b-ClipProj-v3.1.safetensors`（25MB，4B=2560 维与 v3.1 矩阵吻合）。
-- **实现载体 = CCTech `ClipProjLoader` 单节点**（官方 32B 三参数 `[clip, type, device]` 替换为
+- **实现载体 = CCTech `CCTechClipProjLoader` 单节点**（官方 32B 三参数 `[clip, type, device]` 替换为
   `[clip_name, type, projection]`，`type=krea2` 表示 4B/2560 维）：一个节点完成「加载 GGUF 文本塔 +
   应用投影」，输出仍是标准 `CLIP` 对象，下游 H3 节点连接完全不动。
-- **不再用 nicolab28 独立 `ComfyUI-ClipProj`**：CCTech 已内置等价实现（`vendor/clipproj.py`，从
-  nicolab28 移植），避免同名 `ClipProjLoader` 注册冲突。
+- **不使用 nicolab28 独立 `ComfyUI-ClipProj`**：CCTech 已内置等价实现（`vendor/clipproj.py`，从
+  nicolab28 移植）。本机该目录仍在（含调试脚本），三套工作流全部走 CCTech `CCTechClipProjLoader`，无命名冲突。
 - 编码阶段结束后把 4B 编码器卸载回 RAM，采样阶段整张卡给扩散模型。
 - 投影矩阵对编码器量化鲁棒：校准于 bf16，可直接用于 abliterated/fp8/int8 变体（GGUF Q4 未由作者实测，列为风险 R4）。
 
@@ -90,7 +90,7 @@ cond = ((h - mean_in) / std_in) @ W * std_out + mean_out
 - `.pt` 旧文件一律不用（pickle 可执行代码）。
 
 ### ~~4.3 ClipProj 自定义节点~~ — 不再需要
-- ~~git clone nicolab28/ComfyUI-ClipProj~~ → **改用 CCTech 内置 `ClipProjLoader`**（`nodes/extra.py:74`），避免同名节点冲突。
+- ~~git clone nicolab28/ComfyUI-ClipProj~~ → **改用 CCTech 内置 `CCTechClipProjLoader`**（`nodes/extra.py:74`），三套工作流均走它。
 - CCTech `vendor/clipproj.py` 是从 nicolab28 仓库移植的同源实现。
 
 ### 4.4 （可选，未下载）官方 4B 编码器 safetensors
@@ -103,13 +103,14 @@ cond = ((h - mean_in) / std_in) @ W * std_out + mean_out
 ## 5. 三套工作流（节点构成 + 加载卸载时序）
 
 > 前置事实（ComfyUI 0.34 原生 H3）：扩散模型走 CCTech `UnetLoaderGGUF`；
-> **编码器走 CCTech `ClipProjLoader` 单节点**（= 加载 GGUF 文本塔 + 应用投影矩阵）；
+> **编码器走 CCTech `CCTechClipProjLoader` 单节点**（= 加载 GGUF 文本塔 + 应用投影矩阵）；
 > 引用图是编码器 vision 输出，混入 prompt 序列后一次性进入 DiT。
 
 ### 采用的模板：Molbal 官方三件套（已验证全 core）
 
-`plan\molbal_workflows\`（原版在 `bak\`）改编自 Molbal 官方 workflows：
-`github.com/molbal/ComfyUI-GGUF/tree/main/workflows` 的 t2v/i2v/ref2v 模板。
+`plan\molbal_workflows\final\` 改编自 Molbal 官方 workflows：
+`github.com/molbal/ComfyUI-GGUF/tree/main/workflows`（该仓库现改名
+`ChrisColeTech/ComfyUI-GGUF-Loader`）的 t2v/i2v/ref2v 模板。
 **节点已逐一定位，0.34 全部内置**——仅两处替换（见下方各节），其余节点
 （`MiniMaxH3ImageToVideo`/`MiniMaxH3ReferenceToVideo`、`ResolutionSelector`、
 `ComfyMathExpression`(=core `MathExpressionNode`, nodes_math.py:70)、`VAELoader`×2、
@@ -120,7 +121,7 @@ cond = ((h - mean_in) / std_in) @ W * std_out + mean_out
 
 ```
 [编码段]
-  ClipProjLoader(clip_name=heretic-4B.gguf, type=krea2, projection=mmh3-4b-ClipProj-v3.1.safetensors)
+  CCTechClipProjLoader(clip_name=heretic-4B.gguf, type=krea2, projection=mmh3-4b-ClipProj-v3.1.safetensors)
       └─> CLIP → MiniMaxH3ImageToVideo / MiniMaxH3ReferenceToVideo(的 clip 输入)
       （替代官方 qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors + CLIPLoader[minimax]，输出类型同为 CLIP，连线不动）
   ← 编码完成后不显式卸载：后续加载采样模型时，ComfyUI 的 free_memory 会自动把
@@ -141,21 +142,21 @@ cond = ((h - mean_in) / std_in) @ W * std_out + mean_out
 > 需换自己的素材文件（i2v：首/末帧图×2；ref2v：参考图+参考视频+参考音频）。
 
 ### 5.1 T2V（用 fl2va）
-- `plan\molbal_workflows\minimax_h3_t2v-gguf.json`：仅改两处——
+- `plan\molbal_workflows\final\minimax_h3_t2v-gguf.json`：仅改两处——
   `UnetLoaderGGUFDynamicVRAM` → CCTech `UnetLoaderGGUF`，`unet_name=minimax_h3_fl2va_pruned-Q4_K_M.gguf`；
-  `CLIPLoader` → CCTech `ClipProjLoader`，`[qwen3-vl-4b-heretic-Q4_K_M.gguf, krea2, mmh3-4b-ClipProj-v3.1.safetensors]`。
+  `CLIPLoader` → CCTech `CCTechClipProjLoader`，`[qwen3-vl-4b-heretic-Q4_K_M.gguf, krea2, mmh3-4b-ClipProj-v3.1.safetensors]`。
 - cfg：H3 是蒸馏模型，**cfg=1.0 附近**（>1.0 可能直接中止，勿改大）。
 - 纯文本 prompt（或 Molbal 模板自带三段式结构化 H3 prompt）。
 
 ### 5.2 I2V（用 fl2va + 首帧）
-- `minimax_h3_i2v-gguf.json`：同 §5.1 两处替换；`LoadImage`×2（图 114/141）默认
+- `plan\molbal_workflows\final\minimax_h3_i2v-gguf.json`：同 §5.1 两处替换；`LoadImage`×2（图 114/141）默认
   `bg-cerritos-exterior-01.jpg` → 换自己的首/末帧图。
 - fl2va 变体支持「文本 + 零/一/两帧」；`ResizeImageMaskNode`（core）自动缩到模型输入尺寸。
 - **注意**：GGUF 编码器走 vision tower 需要 mmproj（**已安装**，见 §10.3）；官方 workflow 的 I2V 模板用的是
   官方 32B safetensors 编码器（自带 vision），换成 GGUF 4B 后引用图路径由 mmproj 视觉塔提供（见 R4）。
 
 ### 5.3 R2V（用 ref2va + 引用图/视频/音频）
-- `minimax_h3_ref2v-gguf.json`：同 §5.1 两处替换（unet 用 `ref2va_pruned-Q4_K_M.gguf`）；
+- `plan\molbal_workflows\final\minimax_h3_ref2v-gguf.json`：同 §5.1 两处替换（unet 用 `ref2va_pruned-Q4_K_M.gguf`）；
   `LoadImage`〔149〕/`LoadVideo`〔156〕/`LoadAudio`〔153〕默认素材 → 换自己的。
 - 引用路径同样依赖编码器 vision；GGUF 编码器下与 I2V 相同的失败退路。
 
@@ -172,22 +173,22 @@ cond = ((h - mean_in) / std_in) @ W * std_out + mean_out
 ## 7. 执行清单（验收顺序）
 
 - [x] 下载 §4.1 fl2va/ref2va + §4.3 矩阵（已完成，均已在本地）。
-- [x] ClipProj 实现确认（改用 CCTech 内置 `ClipProjLoader`，不装 nicolab28）。
-- [x] 三套 Molbal 工作流改编完成 → `plan\molbal_workflows\`（原版备份在 `bak\`），JSON 已校验。
+- [x] ClipProj 实现确认（改用 CCTech 内置 `CCTechClipProjLoader`，未用 nicolab28）。
+- [x] 三套 Molbal 工作流改编完成 → `plan\molbal_workflows\final\`，JSON 已校验。
 - [x] CCTech 包加载修复（缺 `cv2` → 装 `opencv-python-headless`）：T2V 导入无报错，节点 73/73 注册。
 - [x] 编码器配套 mmproj 视觉塔安装（`qwen3-vl-4b-heretic.mmproj-f16.gguf` 入 `models\text_encoders\`，解决节点 131 报错，见 §10.3）。
-- [ ] 素材替换：i2v 首/末帧图、ref2v 参考图/视频/音频 → 换成自有文件。
-- [ ] 若 `UnetLoaderGGUF` 读不到 `diffusion_models\` 的 gguf → 复制到 `models\unet\`。
-- [ ] **导入 T2V 冒烟**：fl2va + 640x384 短时长 + cfg≈1.0，先跑通再上 720p/15s。
-- [ ] I2V：加首帧，验证 GGUF 编码器 + mmproj vision 路径（失败则换 §4.4）。
-- [ ] R2V：ref2va + 引用图/视频。
-- [ ] 全程任务管理器观察：GPU 显存峰值曲线三段低峰，系统「已提交内存」不趋近上限（无 swap 迹象）。
+- [x] 素材替换：i2v 首/末帧图、ref2v 参考图/视频/音频 → 已换自有文件。
+- [x] 无需处理：`UnetLoaderGGUF` 实测直接读到 `diffusion_models\` 的 gguf。
+- [x] **T2V 冒烟通过**：fl2va + 480P + cfg≈1.0 跑通；实测 480p 下 5s（124 帧）为甜点档。
+- [x] I2V 跑通：首帧 + mmproj vision 路径正常。
+- [x] R2V 跑通：ref2va + 引用图/视频。
+- [x] 全程任务管理器观察：GPU 显存峰值曲线三段低峰，系统「已提交内存」不趋近上限（无 swap 迹象）。
 
 ---
 
 ## 8. 风险与备选
 
-> ⚠️ 本方案沿用 4B+投影，点不开 §7「T2V/I2V/R2V」验收前的**对照组**（`<control:zero>` / `<control:identity>`）——Molbal 官方 workflow 没有这套控制条目的接线，且 CCTech `ClipProjLoader` 的 `projection` 只能选本地矩阵文件、无内置 control 条目。改用 CCTech 后对照组不再可跑，有问题时直接以各任务冒烟为准。
+> ⚠️ 本方案沿用 4B+投影，点不开 §7「T2V/I2V/R2V」验收前的**对照组**（`<control:zero>` / `<control:identity>`）——Molbal 官方 workflow 没有这套控制条目的接线，且 CCTech `CCTechClipProjLoader` 的 `projection` 只能选本地矩阵文件、无内置 control 条目。改用 CCTech 后对照组不再可跑，有问题时直接以各任务冒烟为准。
 
 | # | 风险 | 影响 | 处置 |
 |---|---|---|---|
@@ -235,7 +236,7 @@ cond = ((h - mean_in) / std_in) @ W * std_out + mean_out
     （文件 `Qwen3-VL-4B-Instruct-heretic.mmproj-f16.gguf`，字节数 836,180,704；`-Q8_0` 版为 453,974,752 B。
     matrixportalx 版无 mmproj，故从 mradermacher 取）。
   - 放入 `models\text_encoders\` 后重启 ComfyUI；日志应出现
-    `Using mmproj '...mmproj-Q8_0.gguf' for text encoder '...'...` 即合并成功。
+    `Using mmproj '...mmproj-f16.gguf' for text encoder '...'...` 即合并成功。
 - **结果**：编码器带视觉键 → comfy 归为 `QWEN3VL_4B` → guard 通过，节点 131 不再报错。
 
 ### 10.4 两轮 480p 实测：时长是采样瓶颈，卸载不是
@@ -259,7 +260,7 @@ cond = ((h - mean_in) / std_in) @ W * std_out + mean_out
 > 结论：**480p 甜点仍是 5s，10s 是显存硬墙（两个模型实测都爆）；降步数是唯一有官方背书的时间杠杆（官方模板默认仅 12 步）；两模型速度几乎无差、Q4_K_M VRAM 略低，维持 Q4_K_M 不换模型。**
 
 - **模型/仓库现状（molbal/MiniMax-H3-GGUF README + 文件树，2026-09-09 在线核实）**：
-  - 官方现提供 `fl2va_pruned_fp8_Q4_0`（11.4GB）/ `Q8_0`（20.2GB）/ `Q8_CR`（20.2GB）/ `U16G`（15.0GB），**无 Q4_K_M fl2va**；本地 `minimax_h3_fl2va_pruned-Q4_K_M.gguf`（10.64GB）为旧版命名。fp8_Q4_0 已下载至 `models/diffusion_models/`（10.60GB）并接入 `minimax_h3_t2v-fp8-gguf.json`。
+  - 官方现提供 `fl2va_pruned_fp8_Q4_0`（11.4GB）/ `Q8_0`（20.2GB）/ `Q8_CR`（20.2GB）/ `U16G`（15.0GB），**无 Q4_K_M fl2va**；本地 `minimax_h3_fl2va_pruned-Q4_K_M.gguf`（10.64GB）为旧版命名。fp8_Q4_0 曾下载至 `models/diffusion_models/`（10.60GB）并接入 `minimax_h3_t2v-fp8-gguf.json`，数据对比结束后二者均已删除（见下文采纳建议 2）。
   - **输出时长官方支持 4–15 秒**（README「Output duration: 4–15 seconds」）；10s 在模型能力范围内，瓶颈纯在显存。
   - **U16G（混合 INT8+Q4，15GB）README 称 16GB+ 卡上比 Q4_0 快**，但 15GB 权重对 24GB 卡太挤（10s 已爆），已否决不下载。
   - ⚠️ **K-quant 在 H3 架构属非常规**：ComfyUI-GGUF README 明确 `_K` 量化仅用于文本编码器，扩散模型「可能加载但推理速度极慢」；joeygambino 模型卡称 H3 隐藏宽 2688 不整除 K-quant 的 256 行要求（「architecturally impossible for this model」）。**但本机实测 fp8_Q4_0 与 Q4_K_M 速度几乎相同**——反量化路径正常，该警告未显现，故不为理论风险换模型。
@@ -275,7 +276,7 @@ cond = ((h - mean_in) / std_in) @ W * std_out + mean_out
   - **10 步 vs 20 步（同模型）：肉眼质量基本一致**（用户实测）；且官方模板默认仅 12 步自我印证了该结论。
 - **采纳建议**：
   1. 三套工作流的 `BasicGuider`（t2v 124 / i2v / ref2v 同构节点）steps 由用户自行从 20 下调至 **10 或 12**（官方模板即 12），cfg 保持 1.0，采样时间约减半。
-  2. **模型维持 Q4_K_M 不用换**——fp8 无速度收益、VRAM 反而略高，K-quant 警告在本机未显现；已下载 fp8_Q4_0（及改名的 t2v-fp8-gguf.json）可留档或删除。
+  2. **模型维持 Q4_K_M 不用换**——fp8 无速度收益、VRAM 反而略高，K-quant 警告在本机未显现；已下载的 fp8_Q4_0（及改名的 t2v-fp8-gguf.json）在对比完成后已删除，不保留。
   3. 解码前卸载节点（135/145/157）**保留**——治 #15484 co-residency 抖动，是解码快的来源。
   4. 采样前卸载节点（136/146/158）**保留但别指望收益**——t2v 下只卸 TE 3.6GB。
   5. **时长天花板已定：480p = 5s 甜点**；想要更长 = 放弃解锁（接受换页）或上更大显存。
@@ -307,7 +308,7 @@ cond = ((h - mean_in) / std_in) @ W * std_out + mean_out
 
 ---
 
-- Molbal 官方 GGUF 三件套 workflows：`github.com/molbal/ComfyUI-GGUF`（workflows 目录，t2v/i2v/ref2v 模板 + GGUF 模型 `huggingface.co/molbal/MiniMax-H3-GGUF`）
+- Molbal 官方 GGUF 三件套 workflows：`github.com/molbal/ComfyUI-GGUF`（workflows 目录，t2v/i2v/ref2v 模板；该仓库现改名 `github.com/ChrisColeTech/ComfyUI-GGUF-Loader`）；GGUF 模型：`huggingface.co/molbal/MiniMax-H3-GGUF`
 - ClipProj 投影矩阵库：`huggingface.co/NicoLab28/ClipProj-MiniMax-H3`（mmh3-4b-ClipProj-v3.1.safetensors）；内核源自 `github.com/nicolab28/ComfyUI-ClipProj`
 - qwen3vl 4B heretic：`matrixportalx/Qwen3-VL-4B-Instruct-heretic-Q4_K_M-GGUF`（由 `coder3101/Qwen3-VL-4B-Instruct-heretic` 转换）、`huggingface.co/DreamFast/Qwen3-VL-4b-Heretic-ComfyUI`
 - qwen3vl 4B heretic **mmproj**（视觉塔，节点 131 修复）：`hf-mirror.com/mradermacher/Qwen3-VL-4B-Instruct-heretic-GGUF`（`Qwen3-VL-4B-Instruct-heretic.mmproj-f16.gguf`，836MB；matrixportalx 版无 mmproj）
@@ -321,4 +322,4 @@ cond = ((h - mean_in) / std_in) @ W * std_out + mean_out
 - 勿装的雷：`github.com/lihaoyun6/ComfyUI-MiniMaxH3-Cache#4`（全局 monkey-patch 破坏 H3 生成，ComfyUI Wiki 亦警告）
 - Windows 崩溃 0xC0000005（GGUF mmap 叠加）与卸载纪律：`Thefrizzy1/ComfyUI-MiniMaxH3-Director` node_docs
 - ComfyUI 0.34 原生 H3 支持：`comfy/ldm/minimax`、`text_encoders/minimax.py`、`comfy/sd.py`（MINIMAX=35、QWEN3VL_32B 检测）、`comfy_extras/nodes_minimax_h3.py`、`nodes_math.py`（MathExpressionNode / ComfyMathExpression）
-- CCTech Suite 本地代码：`nodes/extra.py`（ClipProjLoader:74）、`nodes/gguf.py`（UnetLoaderGGUF:317）、`vendor/clipproj.py`
+- CCTech Suite 本地代码：`nodes/extra.py`（CCTechClipProjLoader:74）、`nodes/gguf.py`（UnetLoaderGGUF:317）、`vendor/clipproj.py`

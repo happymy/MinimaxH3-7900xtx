@@ -98,7 +98,7 @@ python_embeded\python.exe -m pip install opencv-python-headless -i https://mirro
 
 - 相对原版（同 v0.34.0）新增 **53 个包**，来源即：CCTech 依赖（`gguf`、`sentencepiece`、`protobuf`、`qwen-tts`、`timm`、`opencv-python-headless`）+ ComfyUI-Manager 全套（fastapi、uvicorn、GitPython、PyGithub、PyJWT、PyNaCl、orjson、gradio 等）+ Qwen3-TTS 系（accelerate、soundfile、sox、librosa、numba、onnxruntime、pandas、scikit-learn 等）。部署时 `pip install` 上面列的必需项即可，其余随 CCTech requirements 与 Manager 装齐
 - **transformers 降级 5.15.1 → 4.57.3**、**huggingface_hub 降级 1.28.0 → 0.36.2**（qwen-tts 需要旧版 transformers，连带 hub 版本配套），装 qwen-tts 时注意强制覆盖
-- 已装 ComfyUI-Manager 4.2.2（配合 `--enable-manager`），主要用于节点管理
+- 已装 ComfyUI-Manager 4.2.2，但启动脚本未加 `--enable-manager`（未激活，只做节点管理备用）
 
 ### 4.4 模型文件（models/，MiniMax H3 部分）
 
@@ -116,7 +116,7 @@ python_embeded\python.exe -m pip install opencv-python-headless -i https://mirro
 - **mmproj 命名必须满足 GGUF loader 合并规则**：文本塔 squash 名 `qwen3vl4bheretic` 必须被 mmproj 文件名包含 → mmproj 固定命名为 `qwen3-vl-4b-heretic.mmproj-f16.gguf`。否则 `CCTechClipProjLoader` 报 `loaded as Qwen3_4B, not as a Qwen3-VL text encoder`
 - 若 `UnetLoaderGGUF` 读不到 `diffusion_models\` 下的 gguf → 复制一份到 `models\unet\`
 - 投影只用 `.safetensors`，**`.pt` 一律不用**（pickle 可执行代码）
-- 已装的 `minimax_h3_fl2va_pruned_fp8_Q4_0.gguf`（官方现版 10.6GB）实测与 Q4_K_M 速度几乎相同、VRAM 略高，仅留档，**主力维持 Q4_K_M**
+- `minimax_h3_fl2va_pruned_fp8_Q4_0.gguf`（官方现版 10.6GB）曾下载实测：与 Q4_K_M 速度几乎相同、VRAM 略高；对比结束后已删除，不保留，**主力就是 Q4_K_M**
 
 ### 4.5 不影响部署的运行时产物（对比时忽略）
 

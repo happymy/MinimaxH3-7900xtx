@@ -38,7 +38,7 @@ cond = ((h - mean_in) / std_in) @ W * std_out + mean_out
 
 - 编码器：`qwen3-vl-4b-heretic-Q4_K_M.gguf`（文本塔）+ 配套 mmproj（视觉塔）
 - 投影矩阵：`mmh3-4b-ClipProj-v3.1.safetensors`
-- 实现：CCTech Suite 内置 `ClipProjLoader` 单节点（一个节点 = 加载 GGUF 文本塔 + 应用投影，输出标准 `CLIP`）
+- 实现：CCTech Suite 内置 `CCTechClipProjLoader` 单节点（一个节点 = 加载 GGUF 文本塔 + 应用投影，输出标准 `CLIP`）
 - 32B 路线整体排除（提示词若需更长/更复杂语义再考虑，见排雷 R6，但 24GB 余量很小）
 
 ---
@@ -57,10 +57,11 @@ cond = ((h - mean_in) / std_in) @ W * std_out + mean_out
 
 ## 3. 自定义节点：CCTech Suite（必需）
 
-- 仓库：`github.com/molbal/ComfyUI-GGUF` → 放入 `ComfyUI\custom_nodes\ComfyUI-GGUF-Loader\`
-- 提供：`UnetLoaderGGUF`（扩散模型）、`CLIPLoaderGGUF`、**`ClipProjLoader`**（`nodes/extra.py:74`，=
-  `CLIPLoaderGGUF` 子类，一次性「加载 GGUF 文本塔 + 应用投影矩阵」，内置 MiniMax H3 支持）、`models\` 下
-  Molbal 官方 t2v/i2v/ref2v 工作流模板。
+- 仓库：`github.com/ChrisColeTech/ComfyUI-GGUF-Loader`（原 Molbal `ComfyUI-GGUF`，建议 clone v2.16.7）→ 放入 `ComfyUI\custom_nodes\ComfyUI-GGUF-Loader\`
+- 提供：`UnetLoaderGGUF`（扩散模型）、`CLIPLoaderGGUF`、**`CCTechClipProjLoader`**（`nodes/extra.py:74`，=
+  `CLIPLoaderGGUF` 子类，一次性「加载 GGUF 文本塔 + 应用投影矩阵」，内置 MiniMax H3 支持）。
+- 工作流模板**不在包内**（无 `models\` 子目录），从上游 workflows 取并改编（见 §5，成品见本仓库
+  `plan\molbal_workflows\final\`）。
 - 纯 torch + `gguf` 包解包（**无 llama.cpp**）。
 
 ### ⚠️ 安装后必做修复（否则整包被 ComfyUI 静默跳过）
@@ -72,7 +73,7 @@ python_embeded\python.exe -m pip install opencv-python-headless -i https://mirro
 > 清华源对该 wheel 返回 403，必须用阿里云源。装完重启，日志应见 `[CCTech Suite]: Activated 73 GGUF loader nodes`。
 
 ### 不要装的东西
-- ❌ 独立 `ComfyUI-ClipProj`（nicolab28）：与 CCTech 内置 `ClipProjLoader` 同名冲突，CCTech 已内置同源实现
+- ❌ 独立 `ComfyUI-ClipProj`（nicolab28）：CCTech 已内置同源实现（`CCTechClipProjLoader`），三套工作流用不到（本机装有历史遗留目录，全新搭建可不装）
 - ❌ `ComfyUI-MiniMaxH3-Cache`：全局 monkey-patch 会破坏 H3 生成，官方 Wiki 亦警告
 - ❌ Optimization Suite 类 NV 优化节点：Blackwell 专属，AMD 无效
 
@@ -97,17 +98,18 @@ python_embeded\python.exe -m pip install opencv-python-headless -i https://mirro
   `qwen3vl4bheretic` 必须被 mmproj 文件名 squash 包含 → mmproj 命名为
   `qwen3-vl-4b-heretic.mmproj-f16.gguf` ✓。否则节点 131 报
   `loaded as Qwen3_4B, not as a Qwen3-VL text encoder`。
-- 若 `UnetLoaderGGUF` 读不到 `diffusion_models\` 的 gguf → 复制一份到 `models\unet\`。
+- `UnetLoaderGGUF` 实测可直接读到 `diffusion_models\` 的 gguf，无需复制到 `models\unet\`（旧保守建议，从未触发）。
 - `.pt` 投影文件一律不用（pickle 可执行代码风险）；备选投影矩阵（v3-mlp / celeb 人名）见排雷 R7。
-- 扩散模型可备 `fl2va_pruned_fp8_Q4_0`（官方现版，10.60GB）：实测与 Q4_K_M 速度几乎相同，**VRAM 反而略高**，仅留档。
+- 扩散模型**不需要** `fl2va_pruned_fp8_Q4_0`（官方现版，10.60GB）：实测与 Q4_K_M 速度几乎相同、VRAM 反而略高，
+  本机对比结束后已删除（见 §8 排雷 7）。
 
 ---
 
 ## 5. 工作流（Molbal 模板改编，共两处替换）
 
 ### 选用模板
-`custom_nodes\ComfyUI-GGUF-Loader\models\`（= `github.com/molbal/ComfyUI-GGUF/workflows`）的
-t2v / i2v / ref2v 模板。**0.34 全部节点内置**，只需替换两处，其余节点
+`github.com/molbal/ComfyUI-GGUF/workflows`（该仓库现改名 `ChrisColeTech/ComfyUI-GGUF-Loader`）的
+t2v / i2v / ref2v 模板（改编成品见本仓库 `plan\molbal_workflows\final\`）。**0.34 全部节点内置**，只需替换两处，其余节点
 （`MiniMaxH3ImageToVideo`/`MiniMaxH3ReferenceToVideo`、`ResolutionSelector`、
 `ComfyMathExpression`、`KSamplerSelect`/`BasicScheduler`/`BasicGuider`/`SamplerCustomAdvanced`/`RandomNoise`、
 `VAEDecode`/`VAEDecodeAudio`、`CreateVideo`/`SaveVideo`）一律不动。
@@ -116,13 +118,13 @@ t2v / i2v / ref2v 模板。**0.34 全部节点内置**，只需替换两处，�
 | 原节点 | 替换为 |
 |---|---|
 | `UnetLoaderGGUFDynamicVRAM` / `CLIPLoader` | CCTech `UnetLoaderGGUF`，`unet_name=minimax_h3_fl2va_pruned-Q4_K_M.gguf`（R2V 用 ref2va） |
-| `CLIPLoader` | CCTech `ClipProjLoader`：`[qwen3-vl-4b-heretic-Q4_K_M.gguf, type=krea2, mmh3-4b-ClipProj-v3.1.safetensors]` |
+| `CLIPLoader` | CCTech `CCTechClipProjLoader`：`[qwen3-vl-4b-heretic-Q4_K_M.gguf, type=krea2, mmh3-4b-ClipProj-v3.1.safetensors]` |
 
 `type=krea2` = 4B/2560 维。输出标准 `CLIP`，下游连线不动。
 
 ### 三段卸载骨架（顺序执行即自动清场，无需手动卸载节点）
 ```
-[编码段]  ClipProjLoader → MiniMaxH3*ToVideo(clip 输入)
+[编码段]  CCTechClipProjLoader → MiniMaxH3*ToVideo(clip 输入)
           ↓ 加载采样模型时 ComfyUI free_memory 自动踢掉最旧的编码器
 [采样段]  UnetLoaderGGUF → latent 采样（模型 + 图像/音频 latent）
           ↓ 加载 VAE 时自动踢掉扩散模型
@@ -145,7 +147,7 @@ t2v / i2v / ref2v 模板。**0.34 全部节点内置**，只需替换两处，�
 set PYTHON=.\python_embeded\python.exe
 set TARGET=ComfyUI\main.py
 
-%PYTHON% -s %TARGET% --windows-standalone-build --enable-manager --disable-pinned-memory --fp16-intermediates
+%PYTHON% -s %TARGET% --windows-standalone-build --disable-pinned-memory --fp16-intermediates
 pause
 ```
 
