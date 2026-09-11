@@ -48,9 +48,13 @@ cond = ((h - mean_in) / std_in) @ W * std_out + mean_out
 1. 下载官方 ComfyUI Windows 便携版并解压（目标目录如 `D:\localAI\ComfyUI-last`）。
 2. **ROCm 后端**（本机验证：`torch 2.9.1+rocm7.2.1` / HIP 7.2.53211，识别为 AMD RX 7900 XTX）：
    ```
-   python_embeded\python.exe -m pip install torch==2.9.1+rocm7.2.1 torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm7.2.1 py-torch-extra-index-url ...
+   python_embeded\python.exe -m pip install torch==2.9.1+rocm7.2.1 torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm7.2.1
    ```
-   ⚠️ **安装命令未以文档形式留存，重装时以 PyTorch 官网 ROCm 安装页为准**（本机为已装状态）。
+   - 官方依据（ComfyUI README「AMD users can install rocm and pytorch with pip」）：stable 命令式样
+     `pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm6.4`，
+     nightly 为 `.../whl/nightly/rocm7.1`；本机 = rocm7.2.1 对应式样。
+   - 官方 portable 自带的是 **CUDA torch**，AMD 不可用；此命令会直接覆盖成 ROCm 版（装在
+     `python_embeded` 里，无需手动建 venv）。装后校验：`python_embeded\python.exe -c "import torch; print(torch.cuda.is_available())"` 输出 `True`。
 3. 校验：启动一次，日志确认 `Recognized AMD device ... RX 7900 XTX ... ROCm`。
 
 ---
