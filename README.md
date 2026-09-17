@@ -149,10 +149,11 @@ python_embeded\python.exe -m pip install opencv-python-headless -i https://mirro
 | 脚本 | 用途 |
 |---|---|
 | `gen_video_ask.py` / `.bat` | 交互式 T2V 生成（提示词/尺寸/时长/Turbo LoRA，回车默认 480P 5s），走 ComfyUI API |
-| `gen_h3_multisegment.py` / `.bat` | **多段视频拼接**：段 0 走 t2v，后续段取上段末帧作 first_frame 续接（fl2va），最后 ffmpeg concat 去重首帧 |
+| `gen_h3_multisegment.py` / `.bat` | **多段视频拼接**：段 0 走 t2v，后续段取上段末帧作 first_frame 续接（fl2va），最后 ffmpeg concat 去重首帧；交互模式优先读同目录 `prompt.txt`（另有 `--prompt-file`，UTF-8/GBK 自动识别；`--prompt` 为单条、全部段复用） |
 | `gen_video.py`（依赖，见脚本注释引用） | 核心 API 逻辑 |
+| `prompt.txt` | `gen_h3_multisegment` 交互模式的提示词模板（整文件作为一条提示词，回车确认或 n 改输） |
 
-依赖：ComfyUI 运行在 `http://127.0.0.1:8188`；ffmpeg（脚本内已写死本机 WinGet 版路径，换机需改 `FFMPEG` 常量）。
+依赖：ComfyUI 运行在 `http://127.0.0.1:8188`；ffmpeg（脚本内已写死本机 WinGet 版路径，换机需改 `FFMPEG` 常量）。`gen_h3_multisegment` 输出文件重名时自动追加 `_1/_2` 后缀防覆盖。
 
 ---
 
