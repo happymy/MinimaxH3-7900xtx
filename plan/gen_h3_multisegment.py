@@ -93,7 +93,7 @@ def submit(graph):
     return resp['prompt_id']
 
 
-def wait(pid, timeout=3600, interval=5):
+def wait(pid, timeout=3600, interval=5, cur=1, total=1):
     start = time.time()
     while time.time() - start < timeout:
         try:
@@ -107,11 +107,11 @@ def wait(pid, timeout=3600, interval=5):
                 if m[0] == 'execution_error':
                     raise RuntimeError('execution error: ' + json.dumps(m[1], ensure_ascii=False)[:2000])
             if st.get('status_str') in ('success', 'completed'):
-                print('done  elapsed %.1fs' % (time.time() - start))
+                print('  段 %d/%d 完成  耗时 %.1fs' % (cur, total, time.time() - start))
                 return h[pid].get('outputs', {})
             if st.get('status_str') == 'error':
                 raise RuntimeError('queue error: ' + json.dumps(st, ensure_ascii=False)[:2000])
-        print('  running %.0fs' % (time.time() - start))
+        print('  段 %d/%d 已运行 %.0fs' % (cur, total, time.time() - start))
         time.sleep(interval)
     raise RuntimeError('timeout')
 
@@ -199,7 +199,26 @@ def ask(msg, default, cast):
         return default
 
 
+def read_prompt_file(path):
+    for enc in ('utf-8-sig', 'utf-8', 'gbk'):
+        try:
+            with open(path, 'r', encoding=enc) as f:
+                return f.read().strip()
+        except UnicodeDecodeError:
+            continue
+    raise RuntimeError('prompt.txt 编码无法识别（尝试 utf-8/gbk 均失败）')
+
+
 def ask_prompt():
+    txt = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'prompt.txt')
+    if os.path.exists(txt):
+        p = read_prompt_file(txt)
+        print('发现 prompt.txt，内容如下：')
+        print('----------------------------------------')
+        print(p)
+        print('----------------------------------------')
+        if input('使用以上内容？(回车=是 / n=重新输入): ').strip().lower() in ('', 'y', 'yes', '是'):
+            return p
     while True:
         p = input('提示词: ').strip()
         if p:
@@ -223,7 +242,8 @@ def ask_size():
 
 def main():
     ap = argparse.ArgumentParser(description='MiniMax H3 multi-segment video (first-frame chaining) via ComfyUI API')
-    ap.add_argument('--prompt', help='提示词；换行可拆多段（每行一段），单条则全部复用')
+    ap.add_argument('--prompt', help='提示词（单条，全部段复用）；与 --prompt-file 互斥')
+    ap.add_argument('--prompt-file', help='从文件读提示词（UTF-8/GBK 自动识别，内容整文件为一条）')
     ap.add_argument('--segments', type=int, default=0, help='段落数（默认=提示词行数，至少 1）')
     ap.add_argument('--size', help='宽x高，默认 864x480')
     ap.add_argument('--duration', type=float, default=5)
@@ -233,7 +253,9 @@ def main():
     a = ap.parse_args()
 
     if a.prompt:
-        prompts = [p.strip() for p in a.prompt.splitlines() if p.strip()]
+        prompts = [a.prompt.strip()]
+    elif a.prompt_file:
+        prompts = [read_prompt_file(a.prompt_file)]
     else:
         prompts = [ask_prompt()]
         w0, h0 = ask_size()
@@ -250,7 +272,7 @@ def main():
         except ValueError:
             print('  无法解析 --size，用 864x480')
             size = DEFAULT_SIZE
-    elif not a.prompt:
+    elif not a.prompt and not a.prompt_file:
         pass
     else:
         size = DEFAULT_SIZE
@@ -268,6 +290,11 @@ def main():
     workdir = tempfile.mkdtemp(prefix='h3_seg_')
     output_dir = os.path.dirname(os.path.abspath(a.out)) or '.'
     out_path = a.out if os.path.isabs(a.out) else os.path.join(output_dir, a.out)
+    stem, ext = os.path.splitext(out_path)
+    n = 1
+    while os.path.exists(out_path):
+        out_path = '%s_%d%s' % (stem, n, ext)
+        n += 1
     seg_videos = []
 
     prev_frame = None
@@ -277,7 +304,7 @@ def main():
         graph = build_graph(prompts[i], size[0], size[1], length, a.steps, a.seed, first_frame=prev_frame)
         pid = submit(graph)
         print('  prompt_id:', pid)
-        outputs = wait(pid)
+        outputs = wait(pid, cur=i + 1, total=n_seg)
         v = find_video_file(outputs, '.mp4')
         if v is None:
             raise RuntimeError('段 %d: outputs 中未找到 mp4: %s' % (i, json.dumps(outputs, ensure_ascii=False)))
