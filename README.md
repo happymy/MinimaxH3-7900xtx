@@ -11,8 +11,8 @@
 
 | 项 | 结论 |
 |---|---|
-| 分辨率 | **480P（864×480）**，0.4MP 档 |
-| 时长 | **5s（124 帧）= 绝对甜点档**（日常主力）；10s 仅备用（显存逼近红线、耗时 ≈ 40–45min vs 5s ≈ 10min） |
+| 分辨率 | **480P（864×480）**，0.4MP 档 x20步 |
+| 时长 | **5s（124 帧）= 绝对甜点档**（日常主力）；（显存逼近红线、耗时 ≈ 优化前40–45min vs 5s ≈ 10min） |
 | steps | **10 或 12**（官方模板默认 12；10 步与 20 步肉眼几乎无差） |
 | cfg | **1.0**（H3 是蒸馏模型，cfgd >1.0 可能直接中止） |
 | sampler / scheduler | `res_multistep` / `simple` |
@@ -61,14 +61,19 @@ set TARGET=ComfyUI\main.py
 pause
 ```
 
-**`run_amd_gpu_enable_dynamic_vram.bat`**（实验变体，ROCm 支持未验证，一次一测）：
+**`run_amd_gpu_enable_dynamic_vram.bat`**（dynamic VRAM 变体；ROCm <7.14 需手动开启，官方 7.14+ 才默认启用，本机 ROCm 7.2.1 需此参数）：
 ```bat
-%PYTHON% -s %TARGET% --windows-standalone-build --enable-dynamic-vram --disable-pinned-memory --fp16-intermediates
+%PYTHON% -s %TARGET% --windows-standalone-build --enable-dynamic-vram --disable-pinned-memory --fp16-intermediates --disable-smart-memory --reserve-vram 6 --disable-api-nodes --cache-none
 ```
 
-两条关键参数的实测意义：
+关键参数的实测意义：
 - `--disable-pinned-memory`：Windows 默认锁 40% 系统 RAM（31.9GB→12.8GB）供 offload DMA，禁用后归还 → **10s 不再爆显存**（仅降低内存消耗，**内存耗尽仍会崩溃**，非根治）
 - `--fp16-intermediates`：中间张量用 fp16，降内存压力
+- `--enable-dynamic-vram`：dynamic VRAM 在 ROCm 7.14+ 才默认开启，本机 7.2.1 需手动加参启用
+- `--disable-smart-memory`：强制激进卸载到系统内存（不尽量驻留显存），配合 dynamic-vram 进一步压低驻留
+- `--reserve-vram 6`：预留 6GB 显存给 OS/桌面软件，避免生成期间切桌面卡顿/驱动超时
+- `--disable-api-nodes`：不加载 API 节点 + 前端不联网；`/prompt` 提交不受影响，plan 脚本照常可用
+- `--cache-none`：不缓存节点执行结果（每次运行全部节点重算），降 RAM/VRAM 占用，代价是重复执行
 - ⚠️ **不要上 `--lowvram/--novram`**（把权重卸到系统内存徒增 swap）；**不要 `--use-sage-attention`**（AMD 无支持 + H3 全局 sage 出纯噪声，issue #15263）
 
 ### 4.2 自定义节点（custom_nodes/）
@@ -150,8 +155,10 @@ python_embeded\python.exe -m pip install opencv-python-headless -i https://mirro
 |---|---|
 | `gen_video_ask.py` / `.bat` | 交互式 T2V 生成（提示词/尺寸/时长/Turbo LoRA，回车默认 480P 5s），走 ComfyUI API |
 | `gen_h3_multisegment.py` / `.bat` | **多段视频拼接**：段 0 走 t2v，后续段取上段末帧作 first_frame 续接（fl2va），最后 ffmpeg concat 去重首帧；交互模式优先读同目录 `prompt.txt`（另有 `--prompt-file`，UTF-8/GBK 自动识别；`--prompt` 为单条、全部段复用） |
+| `gen_h3_ref2va.py` / `.bat` | **ref2va 参考图多段生成**：段 0 用参考图 ref2va（er_sde），后续段 fl2va 首帧续接；`--ref` 多图/目录、`<Picture N>` 引用，全部段共用种子与配置；输出 `h3_ref2va_<seed>.mp4` 防覆盖 |
+| `gen_extract_frames.py` / `.bat` | **抽帧工具**：从视频抽 **首/中/末** 三帧 PNG（ffprobe 读时长，`--mid` 调中间帧位置，防覆盖） |
 | `gen_video.py`（依赖，见脚本注释引用） | 核心 API 逻辑 |
-| `prompt.txt` | `gen_h3_multisegment` 交互模式的提示词模板（整文件作为一条提示词，回车确认或 n 改输） |
+| `prompt.txt` | `gen_h3_multisegment`/`gen_h3_ref2va` 交互模式的提示词模板（整文件作为一条提示词，回车确认或 n 改输） |
 
 依赖：ComfyUI 运行在 `http://127.0.0.1:8188`；ffmpeg（脚本内已写死本机 WinGet 版路径，换机需改 `FFMPEG` 常量）。`gen_h3_multisegment` 输出文件重名时自动追加 `_1/_2` 后缀防覆盖。
 
