@@ -18,10 +18,10 @@
     - 每段提交前 POST /free 卸载模型释放 VRAM（同 gen_video.py free_vram 实测 3 连跑全过）
     - 图中带 ForceUnloadBeforeDecode 节点（与三个 gguf 工作流一致：采样后先卸载再解码）
 """
-import json, urllib.request, urllib.error, urllib.parse, urllib.response, time, sys, argparse, os, subprocess, tempfile
+import json, urllib.request, urllib.error, urllib.parse, urllib.response, time, sys, argparse, os, subprocess, tempfile, random
 
 API = 'http://127.0.0.1:8188'
-FFMPEG = r'C:\Users\GAME\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg.Shared_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-9.0.1-full_build-shared\bin\ffmpeg.exe'
+FFMPEG = r'C:\Users\GAME\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg.Shared_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-9.0.2-full_build-shared\bin\ffmpeg.exe'
 
 # 模型文件（与 molbal_workflows/test 里 t2v/i2v 模板一致）
 GGUF_UNET = 'minimax_h3_fl2va_pruned-Q4_K_M.gguf'
@@ -31,7 +31,7 @@ CLIP_PROJ = 'mmh3-4b-ClipProj-v3.1.safetensors'
 VIDEO_VAE = 'minimax_h3_video_vae_fp16.safetensors'
 AUDIO_VAE = 'minimax_h3_audio_vae_fp32.safetensors'
 
-SEED_DEFAULT = 757358688076805
+SEED_DEFAULT = None          # 未指定 seed 时随机生成
 STEPS_DEFAULT = 20
 DEFAULT_SIZE = (864, 480)   # 480P 16:9，H3 标注 0.4MP 档
 
@@ -248,8 +248,8 @@ def main():
     ap.add_argument('--size', help='宽x高，默认 864x480')
     ap.add_argument('--duration', type=float, default=5)
     ap.add_argument('--steps', type=int, default=STEPS_DEFAULT)
-    ap.add_argument('--seed', type=int, default=SEED_DEFAULT)
-    ap.add_argument('--out', default='h3_multisegment.mp4')
+    ap.add_argument('--seed', type=int, default=None, help='种子（默认随机，回车/不带则随机）')
+    ap.add_argument('--out', default=None, help='输出文件（默认 h3_multisegment_<seed>.mp4，已存在自动加 _1/_2）')
     a = ap.parse_args()
 
     if a.prompt:
@@ -263,7 +263,7 @@ def main():
         total = ask('总时长（秒）: ', 5.0, float)
         a.segments = max(1, round(total / a.duration))
         a.steps = ask('步数[%d]: ' % STEPS_DEFAULT, STEPS_DEFAULT, int)
-        a.seed = ask('种子（回车=默认 %d）: ' % SEED_DEFAULT, SEED_DEFAULT, int)
+        a.seed = ask('种子（回车=随机）: ', random.randint(0, 2**63), int)
         size = (w0, h0)
     if a.size:
         try:
@@ -277,6 +277,11 @@ def main():
     else:
         size = DEFAULT_SIZE
 
+    if a.seed is None:
+        a.seed = random.randint(0, 2**63)
+    if a.out is None:
+        a.out = 'h3_multisegment_%d.mp4' % a.seed
+
     n_seg = a.segments or len(prompts)
     if len(prompts) == 1:
         prompts = prompts * n_seg
@@ -285,7 +290,7 @@ def main():
     prompts = prompts[:n_seg]
 
     length = frames_for(a.duration)
-    print('>>> %d 段，每段 %ds，总时长 %.0fs (%dx%d, length=%d 帧), %d 步' % (n_seg, a.duration, a.duration * n_seg, size[0], size[1], length, a.steps))
+    print('>>> %d 段，每段 %ds，总时长 %.0fs (%dx%d, length=%d 帧), %d 步, seed=%d' % (n_seg, a.duration, a.duration * n_seg, size[0], size[1], length, a.steps, a.seed))
 
     workdir = tempfile.mkdtemp(prefix='h3_seg_')
     output_dir = os.path.dirname(os.path.abspath(a.out)) or '.'
