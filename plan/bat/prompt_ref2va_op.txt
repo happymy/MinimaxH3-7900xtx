@@ -1,0 +1,19 @@
+subject_definitions:
+<Subject 1> is the baby in <Picture 1>, with rosy cheeks, wispy hair, and a striped onesie, seated in a shopping cart. <Subject 2> is the shopping-cart environment in <Picture 1>, including the silver metal frame, seat, and basket. <Subject 3> is the glossy red apple held by the baby, from <Picture 1> and <Video 1>. <Audio 1> is the exaggerated "nom nom" chewing audio from the reference audio, used as the delivery reference for the baby's chewing sounds.
+
+summary:
+[reference generation + audio reference] The target video shows <Subject 1> seated in <Subject 2> chewing <Subject 3> with exaggerated "nom nom" sounds following <Audio 1>, ending with the titles "MiniMax H3 Ref2VA" and "GGUF Q8_CR" displayed on screen.
+
+retention_analysis:
+<Subject 1> (appears in [Shot 1], [Shot 2]): fully_preserved - the baby's appearance, clothing, and seated posture from <Picture 1> are retained.
+<Subject 2> (appears in [Shot 1], [Shot 2]): fully_preserved - the shopping cart's frame, seat, and basket are retained.
+<Subject 3> (appears in [Shot 1]): fully_preserved - the red apple and its size relative to the baby's hands are retained.
+<Audio 1>: reference - the chewing sounds follow <Audio 1>'s exaggerated rhythm and delivery without copying the original signal.
+
+detailed_description:
+The target video is in a bright, realistic, slightly oversized 3D-animated family-film style with soft lighting.
+[Shot 1] The scene opens in a softly lit supermarket aisle with colorful product packaging blurred in the background, showing <Subject 2>, the silver shopping cart, from a medium shot. <Subject 1>, the baby from <Picture 1> with rosy cheeks, wispy hair, and a striped onesie, sits in the cart seat holding <Subject 3>, a glossy red apple, in both hands. The baby raises the apple, takes a chunky bite, and chews with comically over-expressive cheek and jaw movements, each bite landing with an exaggerated "nom nom" sound following the rhythm of <Audio 1>; crumbs collect on the lips and the apple juice shines under the store lights. The camera holds the composition from <Picture 1> and slowly pushes in with small amplitude at slow speed, keeping the baby centered. [Shot 2] At 00:03.500, the shot cuts to a slightly wider angle of the baby in the cart still chewing, as a clean title card "MiniMax H3 Ref2VA" fades in across the top of the frame with the secondary title "GGUF Q8_CR" below it; the camera holds a static shot while the titles settle, and the baby swallows the final bite as the video ends on the framing of <Picture 1>.
+
+overall_soundscape: Soft supermarket room tone continues throughout, with the wet exaggerated chewing sounds and light rustling of the apple in the baby's hands.
+
+non_diegetic_music: N/A

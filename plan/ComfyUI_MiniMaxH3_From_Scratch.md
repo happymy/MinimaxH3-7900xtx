@@ -65,7 +65,7 @@ cond = ((h - mean_in) / std_in) @ W * std_out + mean_out
 - 提供：`UnetLoaderGGUF`（扩散模型）、`CLIPLoaderGGUF`、**`CCTechClipProjLoader`**（`nodes/extra.py:74`，=
   `CLIPLoaderGGUF` 子类，一次性「加载 GGUF 文本塔 + 应用投影矩阵」，内置 MiniMax H3 支持）。
 - 工作流模板**不在包内**（无 `models\` 子目录），从上游 workflows 取并改编（见 §5，成品见本仓库
-  `plan\molbal_workflows\final\`）。
+  `plan\molbal_workflows\final\4b\`）。
 - 纯 torch + `gguf` 包解包（**无 llama.cpp**）。
 
 ### ⚠️ 安装后必做修复（否则整包被 ComfyUI 静默跳过）
@@ -113,7 +113,7 @@ python_embeded\python.exe -m pip install opencv-python-headless -i https://mirro
 
 ### 选用模板
 `github.com/molbal/ComfyUI-GGUF/workflows`（该仓库现改名 `ChrisColeTech/ComfyUI-GGUF-Loader`）的
-t2v / i2v / ref2v 模板（改编成品见本仓库 `plan\molbal_workflows\final\`）。**0.34 全部节点内置**，只需替换两处，其余节点
+t2v / i2v / ref2v 模板（改编成品见本仓库 `plan\molbal_workflows\final\4b\`）。**0.34 全部节点内置**，只需替换两处，其余节点
 （`MiniMaxH3ImageToVideo`/`MiniMaxH3ReferenceToVideo`、`ResolutionSelector`、
 `ComfyMathExpression`、`KSamplerSelect`/`BasicScheduler`/`BasicGuider`/`SamplerCustomAdvanced`/`RandomNoise`、
 `VAEDecode`/`VAEDecodeAudio`、`CreateVideo`/`SaveVideo`）一律不动。

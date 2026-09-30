@@ -1,0 +1,7 @@
+How the reference pictures align with the target video - Picture 1 (from Shot 1) aligns with the 0.00-second mark of the target video; Picture 2 (from Shot 1) aligns with the 5.00-second mark of the target video.
+
+integrated_multimodal_description: [Shot 1] 3D-animated, cinematic sci-fi style, the starship Cerritors begins in the position and framing established by Picture 1, orbiting over a planet with its engines glowing. The camera pans right following the animated starship as it flies across deep space; the nacelles gradually glow brighter, the ship accelerates forward at incredibly fast warp speed with a brief flash and stretched light trails, then eases as a title card displaying the text "Minimax H3" with the secondary title "GGUF U16G" settles into the frame; the sequence ends in the composition established by Picture 2 at the 5.00-second mark.
+
+overall_soundscape: A low deep-space rumble continues underneath, with a rising engine hum that swells during the warp acceleration and a brief electronic flash sound at the burst.
+
+non_diegetic_music: An orchestral dramatic sci-fi theme at a moderate tempo with bold brass and strings, rising in intensity during the warp jump and cutting off cleanly as the title card appears.

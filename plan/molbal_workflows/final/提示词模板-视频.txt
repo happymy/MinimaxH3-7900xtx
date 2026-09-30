@@ -1,0 +1,79 @@
+正面提示词中的“隐形排除”写法
+既然没有负面框，你需要用正面、可观测的约束句来表达“不要什么”。关键区别在于：
+
+无效写法（没人接收）	有效写法（正面提示词内）
+no blur	Frame edges are razor-sharp with zero softening.
+no extra people	Exactly one person is visible in the frame.
+no noise	Surface textures render as clean, defined detail without digital artifacts.
+no text	The frame contains no captions, no logos, and no on-screen text.
+原则：用“什么存在”来描述“什么不该存在”。H3 对“Exactly one person”的遵循度，远高于一个孤立的 no extra people。
+
+📋 可嵌入的正面修复模块
+把以下内容直接粘贴到你现有提示词的末尾，替换掉上一轮我给你的一切负面内容。
+
+模块 A：场景契约（放在提示词最前面）
+text
+[Scene Contract]
+One subject only. The subject occupies the central 40% of the frame. 
+Wardrobe, appearance, and identity are fully specified and remain consistent for the entire clip. 
+The environment is defined by concrete physical objects, not by mood words.
+为什么有效：H3 是 CFG-distilled 模型，它没有“被排斥”的路径，只能“被吸引”到明确的视觉锚点上。你越精确地锁定画面内容，模型自由发挥（即制造模糊和噪点）的空间就越小。
+
+模块 B：画质锁定（贴在场景描述之后）
+text
+[Quality Lock]
+Ultra-sharp native 768p output. Tack-sharp focus on the subject with edge-to-edge clarity.
+Visible micro-textures: fabric weave, skin pores, surface grain, material details.
+No motion blur on static elements. Hard-edge boundaries between subject and background.
+Shot on ARRI Alexa 65, 35mm lens. High-frequency detail retention across the entire frame.
+Restrained film grain only (replace with "Clean digital rendering, no film grain" if you want pure clarity).
+关键：No motion blur on static elements 是正面约束，它告诉模型“静止的东西必须清晰”，这比说“不要模糊”更有效，因为它在描述一个可观测的物理状态。
+
+模块 C：排除块（放在提示词最后，用正面句式）
+这是 H3 社区验证的替代方案——用 1-2 句可观测的约束句结尾，而不是一长串负面词表。
+
+text
+[Frame Constraints]
+Exactly one person in frame. No captions, no logos, no on-screen text.
+The camera is locked or moving at a single, constant speed. 
+The composition is clean and uncluttered, with no competing elements.
+根据你的具体问题，可以替换第一句：
+
+如果常出现多余人物：Exactly one person is visible, fully specified, occupying the central portion of the frame.
+
+如果常出现文字：The frame contains no text of any kind, including signage, captions, or watermarks.
+
+如果画面杂乱：The composition contains only the named subject and the specified environment elements. No additional objects appear.
+
+🚫 仍然需要从你提示词中删除的词
+这些词无论在正面还是负面位置，都会导致 H3 启用全局平滑策略，直接制造发虚：
+
+删除	原因	替代
+soft lighting	触发全局柔化	Broad diffused illumination from a large source, with readable skin texture
+dreamy / 梦幻	全局平滑	Clean rendering with defined edges
+atmospheric haze	雾面感	Clear air with visible depth cues
+beauty / flawless / 完美皮肤	塑料皮肤	Natural skin texture with visible pores and micro-detail
+cinematic blur	全画面模糊	Shallow depth of field with sharp focus on the subject
+🧪 如果边缘仍然发虚：边界强化专项
+把以下句子逐字加在动作描述之后：
+
+text
+The subject boundary maintains hard-edge separation from the background. 
+No anti-aliasing softness. Fabric weave visible. Hair strands individually resolved. 
+Surface reflections show specular highlights with defined edges.
+同时在“Frame Constraints”块中追加：Frame edges are razor-sharp with zero softening.
+
+✅ 完整操作顺序
+分辨率：确认输出至少 768p 短边，不要低于此值再放大
+
+加速开关：最终成片关闭 Turbo / SageAttention
+
+删除：从提示词中删掉所有 soft / dreamy / beauty / cinematic blur 类词汇
+
+添加模块 A（场景契约）到提示词开头
+
+添加模块 B（质量锁定）到场景描述之后
+
+添加模块 C（排除块）到提示词末尾，用正面句式
+
+种子固定：固定 seed，每次只改一个变量，观察是哪个因素在制造问题
