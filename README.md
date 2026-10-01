@@ -78,18 +78,18 @@ cond = ((h - mean_in) / std_in) @ W * std_out + mean_out
 
 ### 4.1 启动脚本（portable 根目录）
 
-**`run_amd_gpu.bat`**（日常启动，旁边保留原版 `.bak`）：
+**`run_amd_gpu_enable_dynamic_vram.bat`**（**日常启动 / 主力**；`--enable-dynamic-vram` 在 ROCm <7.14 需手动开启，官方 7.14+ 才默认启用，本机 ROCm 7.2.1 必须加）：
+```bat
+%PYTHON% -s %TARGET% --windows-standalone-build --enable-dynamic-vram --disable-pinned-memory --fp16-intermediates --disable-smart-memory --reserve-vram 6 --disable-api-nodes --cache-none --use-ck-attention
+```
+
+**`run_amd_gpu.bat`**（**已弃用**，仅保留原版 `.bak` 作对照，勿再日常使用）：
 ```bat
 @echo off
 set PYTHON=.\python_embeded\python.exe
 set TARGET=ComfyUI\main.py
 %PYTHON% -s %TARGET% --windows-standalone-build --disable-pinned-memory --fp16-intermediates
 pause
-```
-
-**`run_amd_gpu_enable_dynamic_vram.bat`**（dynamic VRAM 变体；ROCm <7.14 需手动开启，官方 7.14+ 才默认启用，本机 ROCm 7.2.1 需此参数）：
-```bat
-%PYTHON% -s %TARGET% --windows-standalone-build --enable-dynamic-vram --disable-pinned-memory --fp16-intermediates --disable-smart-memory --reserve-vram 6 --disable-api-nodes --cache-none --use-ck-attention
 ```
 
 关键参数的实测意义：

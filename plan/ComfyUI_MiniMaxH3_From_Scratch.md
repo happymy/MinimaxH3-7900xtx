@@ -141,9 +141,9 @@ t2v / i2v / ref2v 模板（改编成品见本仓库 `plan\molbal_workflows\final
 
 ---
 
-## 6. 启动脚本（含两条关键参数）
+## 6. 启动脚本（主力 dynamic VRAM 版）
 
-`run_amd_gpu.bat`（已备份为 `run_amd_gpu.bat.bak`）：
+`run_amd_gpu_enable_dynamic_vram.bat`（**日常启动 / 主力**；`--enable-dynamic-vram` 在 ROCm <7.14 需手动开启，官方 7.14+ 才默认启用，本机 ROCm 7.2.1 必须加）：
 
 ```bat
 @echo off
@@ -151,19 +151,25 @@ t2v / i2v / ref2v 模板（改编成品见本仓库 `plan\molbal_workflows\final
 set PYTHON=.\python_embeded\python.exe
 set TARGET=ComfyUI\main.py
 
-%PYTHON% -s %TARGET% --windows-standalone-build --disable-pinned-memory --fp16-intermediates
+%PYTHON% -s %TARGET% --windows-standalone-build --enable-dynamic-vram --disable-pinned-memory --fp16-intermediates --disable-smart-memory --reserve-vram 6 --disable-api-nodes --cache-none --use-ck-attention
 pause
 ```
 
-两个参数的实测意义：
+关键参数的实测意义：
 - `--disable-pinned-memory`：Windows 默认锁死 40% 系统 RAM（31.9GB→锁 12.8GB）供权重 offload DMA，
   禁用它把内存归还给系统调度 → **10s 不再爆显存**（⚠️ 注意：仅降低单次内存消耗、不易触发崩溃，
   **内存耗尽时仍会 OOM 崩溃**，非根治）。
 - `--fp16-intermediates`：节点间中间张量用 fp16（Experimental），内存压力降低。
+- `--enable-dynamic-vram`：dynamic VRAM（ROCm <7.14 需手动开启，7.14+ 默认）
+- `--disable-smart-memory`：激进卸载到系统内存，配合 dynamic-vram 进一步压低驻留
+- `--reserve-vram 6`：预留 6GB 显存给 OS/桌面软件，避免生成期切桌面卡顿/驱动超时
+- `--disable-api-nodes`：不加载 API 节点 + 前端不联网；`/prompt` 提交不受影响
+- `--cache-none`：不缓存节点执行结果（每次运行全部节点重算），降 RAM/VRAM 占用，代价是重复执行
+- `--use-ck-attention`：Comfy Kitchen attention（int8 内核，`comfy_kitchen` 0.2.36，HIP 后端实测可用；缺失或 kernel 不支持时**直接 exit(-1) 拒启**）
 
-就记住：**只改这两个 + 默认参数；不要上 `--lowvram/--novram`**（会主动把权重卸到系统内存，徒增 swap 风险）。
+就记住：**不要上 `--lowvram/--novram`**（会主动把权重卸到系统内存，徒增 swap 风险）；**不要 `--use-sage-attention`**（AMD 无支持 + H3 全局 sage 出纯噪声）。
 
-可选 `--enable-dynamic-vram` 变体（`run_amd_gpu_enable_dynamic_vram.bat`）——ROCm 支持状态未验证，实验性质，一次一测。
+`run_amd_gpu.bat`（**已弃用**，仅保留 `.bak` 作对照）：早期不带 dynamic VRAM 的版本，参数仅 `--disable-pinned-memory --fp16-intermediates`，勿再日常使用。
 
 ---
 

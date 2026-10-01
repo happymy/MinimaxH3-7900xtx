@@ -34,7 +34,7 @@
 |---|---|
 | ComfyUI | 0.34.0（`ComfyUI_windows_portable`） |
 | 推理后端 | `torch 2.9.1+rocm7.2.1` / HIP 7.2.53211，识别为 AMD RX 7900 XTX（ROCm，非 CUDA） |
-| 启动脚本 | `run_amd_gpu.bat`、`run_amd_gpu_enable_dynamic_vram.bat`（均存在） |
+| 启动脚本 | `run_amd_gpu_enable_dynamic_vram.bat`（**主力日常启动**）；`run_amd_gpu.bat`（**已弃用**，仅 `.bak` 存档对照） |
 | GGUF 加载器 | **CCTech Suite**（`ComfyUI-GGUF-Loader` v2.16.7）已装，注册 `UnetLoaderGGUF` / `CLIPLoaderGGUF` / **`CCTechClipProjLoader`**（`nodes/extra.py:74`，CLIPLoaderGGUF 子类，可一次性「加载 GGUF 文本塔 + 应用投影矩阵」，输出 CLIP），纯 torch+`gguf` 包解包（无 llama.cpp），内置 MiniMax H3 支持。⚠️ **已修复**：import 链上的 `krea2.py→vendor/depth_anything_v2.py` 缺 `cv2` 曾导致整包被 ComfyUI 跳过，已向 `python_embeded` 装 `opencv-python-headless`（阿里云源），现 73 节点正常注册 |
 | 编码器 | `text_encoders/qwen3-vl-4b-heretic-Q4_K_M.gguf`（~2.3GB 文本塔）+ 配套 `text_encoders/qwen3-vl-4b-heretic.mmproj-f16.gguf`（836MB 视觉塔，CCTech loader 自动合并，详见 §10.3） |
 | 扩散模型 | `diffusion_models/minimax_h3_fl2va_pruned-Q4_K_M.gguf`、`ref2va_pruned-Q4_K_M.gguf`（均已在 `diffusion_models\`，共 ~22.8GB 十进制；**实测 `UnetLoaderGGUF` 直接读得到，无需复制到 `models\unet\`**） |
@@ -195,7 +195,7 @@ cond = ((h - mean_in) / std_in) @ W * std_out + mean_out
 
 ## 6. 启动与防 swap
 
-- 启动用现有 `run_amd_gpu.bat`（`--amdgpu` 或等效后端参数已在脚本内）。**不要**为提速上 `--lowvram/--novram`（会主动把权重卸载到系统内存，无谓增加 RAM 压力；本方案按阶段控制驻留已够）。若 ComfyUI 官方 0.34 在 ROCm 上 `--enable-dynamic-vram` 可用，则作为可选项实验（§8 R1）。
+- 启动用 `run_amd_gpu_enable_dynamic_vram.bat`（**主力日常启动**，含 `--enable-dynamic-vram --disable-smart-memory --reserve-vram 6 --disable-api-nodes --cache-none --use-ck-attention`，§8 R1 → §11 已实测采纳）。旧 `run_amd_gpu.bat` 已弃用。**不要**为提速上 `--lowvram/--novram`（会主动把权重卸载到系统内存，无谓增加 RAM 压力；本方案按阶段控制驻留已够）。
 - **swap 红线**：Windows 页面文件仅在系统物理 RAM 耗尽时才触发。本方案峰值显存 ~17GB < 24GB，正常不会触底；避免同时开多浏览器/大程序占用 RAM，Ubuntu 说法不适用，本机主要防：ComfyUI 误把 VAE 留在显存 + 下一个大件叠加（靠 §5 的顺序执行 + free_memory 自动踢旧），以及系统整体 RAM 保持余量。
 - **Windows 专属崩溃源**（ComfyUI-MiniMaxH3-Director 文档实证）：GGUF 权重是内存映射，**第二个不兼容模型直接叠在第一个上加载会崩 `0xC0000005`（访问冲突），而非干净的 OOM**。规避靠强制先后顺序（加载采样模型时编码器已被 free_memory 踢出、加载 VAE 时扩散模型已被踢出），绝不允许两个大件同时驻留触发叠加。
 
@@ -316,7 +316,7 @@ cond = ((h - mean_in) / std_in) @ W * std_out + mean_out
 ---
 
 ### 10.6 联网续查优化手段（2026-09-09，含本机实测结论）：5s 仍是甜点，10s 是「能跑但极限」
-> 结论：**两条启动参数（`--disable-pinned-memory --fp16-intermediates`）已加入 `run_amd_gpu.bat`（.bak 已备份）。本机实测：RAM 占用确实下降（幅度不大）、10s 不再爆显存——但 10s 已非常极限，不安全，且耗时是 5s 的 3 倍多；**内存耗尽时仍会崩溃**（更正：只降低了单次内存消耗、不容易触发，并非消除 OOM 崩溃）。最终维持 5s 为甜点档位。**
+> 结论：**两条启动参数（`--disable-pinned-memory --fp16-intermediates`）已加入 `run_amd_gpu.bat`（.bak 已备份；该脚本此后被 `run_amd_gpu_enable_dynamic_vram.bat` 取代，现仅存档对照，见 §1）**。本机实测：RAM 占用确实下降（幅度不大）、10s 不再爆显存——但 10s 已非常极限，不安全，且耗时是 5s 的 3 倍多；**内存耗尽时仍会崩溃**（更正：只降低了单次内存消耗、不容易触发，并非消除 OOM 崩溃）。最终维持 5s 为甜点档位。**
 
 - **原稿否定回顾**：§10.5 曾把「10s 爆显存」定为换页硬墙、不再试。该判断建立在缺启动参数的前提下，需降级为「未验证的可解瓶颈」。
 - **已验证同款硬件的正解（tonyd2wild/MiniMax-H3-Local，3090+31GB RAM）**：
