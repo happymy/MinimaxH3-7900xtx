@@ -42,6 +42,17 @@ ref2va 段 0 与 fl2va 段 i>0 两张图共用同一组常量，两张图同步�
     参考 multisegment：各段独立生成 mp4 后按顺序 ffmpeg concat 为一个文件
     （各段无共享首帧，不做 trim）；输出文件名带种子，已存在自动加 _1/_2 防覆盖。
 
+限制（重要）:
+    多段时所有段共用同一条提示词（--segments >1 必触发），且段 i>0 用首帧续接，
+    所以提示词里的动作必须幂等（「保持得住」的动作）：
+      安全：手放在额头上、镜头缓缓推近、雨一直下、身体轻微晃动
+            —— 重复执行和接着演，产出的画面一样，看不出重播；
+      危险：手指从额头滑到发际、从口袋掏出手机、镜头先拉后推、抬头又低头
+            —— 这些是过程/递进动作，模型会在每段重新演一遍（动作循环、画面抽搐）。
+    只需要「单段 + 参考图」时 --segments 保持 1，完全没有此问题。
+    需要多个递进或不同动作 -> 用 gen_h3_scenes_ref.py（每块一个动作 + 多图/视频参考，
+    超硬件单段上限自动拆分），不要塞进本脚本。
+
 与既有优化保持一致:
     - 每段提交前 POST /free 卸载模型释放 VRAM。
     - 图中带 ForceUnloadBeforeDecode（采样后先卸载再解码）。
@@ -382,9 +393,9 @@ def parse_size(text, default):
 
 def main():
     ap = argparse.ArgumentParser(description='MiniMax H3 reference-to-video (ref2va) multi-segment via ComfyUI API')
-    ap.add_argument('--prompt', help='提示词（按换行拆段，每行一段；只有一行则所有段复用）')
-    ap.add_argument('--prompt-file', help='从文件读提示词（UTF-8/GBK 自动识别，行为段）')
-    ap.add_argument('--segments', type=int, default=0, help='段数（多段时各段分别生成后拼接）')
+    ap.add_argument('--prompt', help='提示词（整条复用，不按行拆分；多段时各段共用同一条，动作须幂等，见 --help 末尾）')
+    ap.add_argument('--prompt-file', help='从文件读提示词（UTF-8/GBK 自动识别，整文件为一条）')
+    ap.add_argument('--segments', type=int, default=0, help='段数（默认 1，=1 时无重播问题；>1 时各段共用同一条提示词）')
     ap.add_argument('--ref', action='append', default=[], help='参考图片路径/目录，多段时每项=该段参考图（可重复）')
     ap.add_argument('--size', help='宽x高，默认 864x480')
     ap.add_argument('--duration', type=float, default=5, help='每段时长（秒），默认 5')

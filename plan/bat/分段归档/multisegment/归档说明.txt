@@ -1,0 +1,20 @@
+# multisegment
+# t2v 起始 + 首帧续接。共 3 段 x 5s / 124 帧，拼接成片 370 帧 15.50s。
+# seed = 2288190560938289565
+# 成片: D:\localAI\ComfyUI-last\plan\bat\multisegment\h3_multisegment_2288190560938289565.mp4
+
+seg0.mp4   <- MiniMax_H3_00199_.mp4
+    864x480  124 帧 (期望 124)  OK   295 KB
+    seg0_last_frame.png   已重建  77 KB
+    seg0_first_frame.png  已重建  63 KB
+seg1.mp4   <- MiniMax_H3_00200_.mp4
+    864x480  124 帧 (期望 124)  OK   259 KB
+    seg1_last_frame.png   已重建  88 KB
+    seg1_first_frame.png  已重建  71 KB
+seg2.mp4   <- MiniMax_H3_00201_.mp4
+    864x480  124 帧 (期望 124)  OK   262 KB
+    seg2_last_frame.png   已重建  103 KB
+    seg2_first_frame.png  已重建  83 KB
+
+# 续接关系：seg1_last_frame.png 就是 seg2 的 first_frame 输入
+# 最后一个 seg2 的尾帧不参与续接，仅作成片末帧参考

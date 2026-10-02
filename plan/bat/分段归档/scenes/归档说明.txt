@@ -1,0 +1,20 @@
+# scenes
+# 分镜 3 块 x 4s / 107 帧：块1 t2va 起始，块2-3 fl2va 首帧续接。
+# seed = 1420618155338671637
+# 成片: D:\localAI\ComfyUI-last\plan\bat\scenes\h3_scenes_1420618155338671637.mp4
+
+seg0.mp4   <- MiniMax_H3_00205_.mp4
+    864x480  107 帧 (期望 107)  OK   246 KB
+    seg0_last_frame.png   已重建  87 KB
+    seg0_first_frame.png  已重建  64 KB
+seg1.mp4   <- MiniMax_H3_00206_.mp4
+    864x480  107 帧 (期望 107)  OK   263 KB
+    seg1_last_frame.png   已重建  103 KB
+    seg1_first_frame.png  已重建  71 KB
+seg2.mp4   <- MiniMax_H3_00207_.mp4
+    864x480  107 帧 (期望 107)  OK   383 KB
+    seg2_last_frame.png   已重建  168 KB
+    seg2_first_frame.png  已重建  88 KB
+
+# 续接关系：seg1_last_frame.png 就是 seg2 的 first_frame 输入
+# 最后一个 seg2 的尾帧不参与续接，仅作成片末帧参考

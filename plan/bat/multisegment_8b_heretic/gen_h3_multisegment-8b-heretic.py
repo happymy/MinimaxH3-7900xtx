@@ -29,6 +29,16 @@
     每段完成后下载 mp4 -> ffmpeg 提取末帧 -> 上传到 ComfyUI input/ -> 下一段 LoadImage。
     全部段完成后 ffmpeg 按顺序 concat 为一个文件（后续段 trim 掉与上一段重复的首帧）。
 
+限制（重要）:
+    所有段共用同一条提示词，且段 i>0 用首帧续接，所以提示词里的动作必须幂等
+    （「保持得住」的动作）：
+      安全：手放在额头上、镜头缓缓推近、雨一直下、身体轻微晃动
+            —— 重复执行和接着演，产出的画面一样，看不出重播；
+      危险：手指从额头滑到发际、从口袋掏出手机、镜头先拉后推、抬头又低头
+            —— 这些是过程/递进动作，模型会在每段重新演一遍（动作循环、画面抽搐）。
+    需要多个递进或不同动作 -> 用 gen_h3_scenes.py（每块一个动作，
+    超硬件单段上限自动拆分），不要塞进本脚本。
+
 与既有优化保持一致:
     - 每段提交前 POST /free 卸载模型释放 VRAM（同 gen_video.py free_vram 实测 3 连跑全过）
     - 图中带 ForceUnloadBeforeDecode 节点（与三个 gguf 工作流一致：采样后先卸载再解码）
@@ -38,7 +48,7 @@ import json, urllib.request, urllib.error, urllib.parse, urllib.response, time, 
 API = 'http://127.0.0.1:8188'
 FFMPEG = r'C:\Users\GAME\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg.Shared_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-9.0.2-full_build-shared\bin\ffmpeg.exe'
 
-# 模型文件（与 molbal_workflows/8b 里 t2v/i2v 模板一致）
+# 模型文件（与 molbal_workflows/final/8b 里 t2v/i2v 模板一致）
 GGUF_UNET = 'minimax_h3_fl2va_pruned-Q4_K_M.gguf'
 CLIP_NAME = 'qwen3-vl-8b-heretic-1.3.0_fp8_e4m3fn.safetensors'
 CLIP_TYPE = 'boogu'
@@ -259,7 +269,7 @@ def main():
     ap = argparse.ArgumentParser(description='MiniMax H3 multi-segment video (first-frame chaining) via ComfyUI API')
     ap.add_argument('--prompt', help='提示词（单条，全部段复用）；与 --prompt-file 互斥')
     ap.add_argument('--prompt-file', help='从文件读提示词（UTF-8/GBK 自动识别，内容整文件为一条）')
-    ap.add_argument('--segments', type=int, default=0, help='段落数（默认=提示词行数，至少 1）')
+    ap.add_argument('--segments', type=int, default=0, help='段落数（默认 1）。提示词整条复用，段数只由本参数决定')
     ap.add_argument('--size', help='宽x高，默认 864x480')
     ap.add_argument('--duration', type=float, default=5)
     ap.add_argument('--steps', type=int, default=STEPS_DEFAULT)

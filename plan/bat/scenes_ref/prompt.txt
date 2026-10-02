@@ -1,0 +1,46 @@
+# ============================================================
+# 分镜 3 块 -> --duration 4,4,4
+# 块 1 走 ref2va：用 --ref-dir img  (img/1_女孩.png -> <Picture 1>, img/2_男孩.png -> <Picture 2>)
+# 块 2/3 走 fl2va：纯文本描述，不写 <Picture>，靠上一段末帧首帧续接
+# 三块动作均为幂等（循环/状态），自动拆分也安全。
+# ============================================================
+
+# ---- 块 1（ref2va）：女孩与男孩并肩站立，男孩抬手挥手并保持 ----
+subject_definitions:
+<Subject 1> is the school-age girl in <Picture 1>, with long straight black hair parted down the centre and falling to her chest, an oval face, dark brown almond-shaped eyes, fair skin, and a calm closed-lip smile, wearing a crisp white short-sleeved school shirt with a navy piped collar and small black buttons, a navy A-line pleated skirt to just above the knee, opaque white tights, and black patent Mary Jane shoes with small metal buckles.
+<Subject 2> is the school-age boy in <Picture 2>, with short textured black hair and a side-swept fringe, a round face, dark brown eyes, fair skin, and a broad toothy smile, wearing a crisp white short-sleeved button-up school shirt with a small navy shield emblem on the left chest pocket, navy shorts to just above the knee with an elastic waist, dark ankle socks, and white sneakers with grey and black trim.
+<Subject 3> is the seamless pure-white studio backdrop shared by <Picture 1> and <Picture 2>, a clean even white sweep with no props, markings, or visible seams.
+
+summary:
+[reference generation] The target video opens on <Subject 1> and <Subject 2> standing side by side and facing the camera in <Subject 3>, keeps the camera completely still, and shows <Subject 2> raising one hand into a slow wave that he holds to the end while <Subject 1> stands still beside him.
+
+retention_analysis:
+<Subject 1> (appears in [Shot 1]): fully_preserved - her centre-parted long black hair, oval face, dark brown almond eyes, fair skin, closed-lip smile, white shirt with navy piped collar, navy pleated skirt, white tights, and black patent Mary Jane shoes are all retained.
+<Subject 2> (appears in [Shot 1]): fully_preserved - his short textured black hair with side-swept fringe, round face, dark brown eyes, broad toothy smile, white short-sleeved shirt with the navy shield emblem, navy shorts, dark ankle socks, and white sneakers are all retained.
+<Subject 3> (appears in [Shot 1]): fully_preserved - the clean, even, seamless white backdrop is retained without props or seams.
+
+detailed_description:
+The target video is a live-action studio school-portrait shot in a clean, high-key photographic style with even, readable light and a white-and-navy palette.
+[Shot 1] [Static shot] A locked-off full-body shot frames <Subject 1> and <Subject 2> standing side by side at the centre of <Subject 3>, the seamless pure-white studio backdrop, with clear space above their heads and on both sides. The camera stays completely still for the entire clip: the framing, the focal length, and the eye-level frontal angle do not shift by a single degree. On the left of the frame, <Subject 1>, the girl with long straight black hair parted down the centre, an oval face, dark brown almond-shaped eyes, fair skin, and a calm closed-lip smile, stands upright with her legs together and both arms resting straight down at her sides, in her crisp white short-sleeved school shirt with a navy piped collar, her navy A-line pleated skirt, opaque white tights, and black patent Mary Jane shoes. On the right of the frame, <Subject 2>, the boy with short textured black hair and a side-swept fringe, a round face, dark brown eyes, fair skin, and a broad toothy smile, stands upright in his crisp white short-sleeved button-up shirt bearing a small navy shield emblem on the left chest pocket, his navy shorts, dark ankle socks, and white sneakers. <Subject 2> lifts his left hand out to shoulder height with the palm facing the lens, then moves that raised hand side to side in a slow, even wave, and holds the hand up at the end of the clip. <Subject 1> keeps both arms straight down and does not move them. Neither child steps or turns, and their feet stay planted. Broad diffused frontal illumination from a large softbox spreads even light across both faces and uniforms, leaving only faint soft contact shadows on the white floor beneath their shoes. The white backdrop stays clean and even from one edge of the frame to the other. Exactly two people are visible in the frame, both fully specified. The frame edges are razor-sharp with zero softening, the cotton weave of both shirts and individual hair strands are resolved, and the picture contains no captions, no logos, and no on-screen text of any kind.
+
+overall_soundscape: A quiet, empty studio room tone runs continuously, with a faint soft swish of the boy's shirt sleeve during the wave and two light breaths each time their chests rise.
+
+non_diegetic_music: N/A
+
+###
+
+# ---- 块 2（fl2va）：女孩转头看向男孩并微笑，保持 ----
+integrated_multimodal_description: [Shot 1] Live-action, 3D CG, a full-body shot holds on the two school-age children standing side by side in front of a seamless pure-white studio backdrop. The camera holds a static shot at eye level throughout, with the framing and focal length completely locked. The girl on the left has long straight black hair parted down the centre, an oval face, dark brown almond-shaped eyes, fair skin, and wears a crisp white short-sleeved school shirt with a navy piped collar, a navy A-line pleated skirt to just above the knee, opaque white tights, and black patent Mary Jane shoes. The boy on the right has short textured black hair with a side-swept fringe, a round face, dark brown eyes, fair skin, and wears a crisp white short-sleeved button-up school shirt with a small navy shield emblem on the left chest pocket, navy shorts, dark ankle socks, and white sneakers with grey and black trim. The girl turns her head to her right to look at the boy and holds a calm, warm smile toward him for the rest of the clip, while the boy lowers his raised hand back to his side and turns his head slightly toward her. Both children keep their feet planted and never step. Broad diffused frontal illumination from a large softbox spreads even light across both faces and uniforms, leaving only faint soft contact shadows on the white floor. Exactly two people are visible in the frame, both fully specified. The frame edges are razor-sharp with zero softening, the cotton weave of both shirts and individual hair strands are resolved, and the picture contains no captions, no logos, and no on-screen text of any kind.
+
+overall_soundscape: A quiet, empty studio room tone runs continuously, with a faint soft rustle of cotton as the two children turn their heads and two light breaths each time their chests rise.
+
+non_diegetic_music: N/A
+
+###
+
+# ---- 块 3（fl2va）：两人并肩，同时转向对方相视而笑并保持 ----
+integrated_multimodal_description: [Shot 1] Live-action, 3D CG, a full-body shot holds on the two school-age children standing side by side in front of a seamless pure-white studio backdrop. The camera holds a static shot at eye level throughout, with the framing and focal length completely locked. The girl on the left has long straight black hair parted down the centre, an oval face, dark brown almond-shaped eyes, fair skin, and wears a crisp white short-sleeved school shirt with a navy piped collar, a navy A-line pleated skirt to just above the knee, opaque white tights, and black patent Mary Jane shoes. The boy on the right has short textured black hair with a side-swept fringe, a round face, dark brown eyes, fair skin, and wears a crisp white short-sleeved button-up school shirt with a small navy shield emblem on the left chest pocket, navy shorts, dark ankle socks, and white sneakers with grey and black trim. Both children stand upright with a small even gap between them and both arms resting straight down at their sides. They turn their heads toward each other and share a calm, warm smile, holding that turned-head smiling pose unchanged to the end of the clip, with only a slow steady rise and fall of their chests as they breathe and a light drift of loose hair strands beside their cheeks. Their feet stay planted and neither of them steps. Broad diffused frontal illumination from a large softbox spreads even light across both faces and uniforms, leaving only faint soft contact shadows on the white floor. Exactly two people are visible in the frame, both fully specified. The frame edges are razor-sharp with zero softening, the cotton weave of both shirts and individual hair strands are resolved, and the picture contains no captions, no logos, and no on-screen text of any kind.
+
+overall_soundscape: A quiet, empty studio room tone runs continuously, with two light breaths audible each time their chests rise and a faint soft rustle of cotton as their heads turn.
+
+non_diegetic_music: N/A

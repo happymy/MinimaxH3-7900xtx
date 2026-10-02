@@ -1,2 +1,6 @@
 # plan 下的临时/测试产物，不纳入版本控制
 plan/TEMP/
+
+# Python 字节码缓存（py_compile 语法校验会产生）
+__pycache__/
+*.pyc

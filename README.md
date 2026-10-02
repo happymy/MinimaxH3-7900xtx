@@ -42,7 +42,8 @@ MP 档位 ↔ 16:9 分辨率对应（Plan §11.10.1）：0.98→1344×768 · 0.9
 
 ## 二、环境基线
 
-- ComfyUI `ComfyUI_windows_portable`，**核心 v0.34.0**（随便携版自带，所有验证基于此版）
+- ComfyUI `ComfyUI_windows_portable`，**核心已升级至 v0.38.0**（commit `fb2315f1`，2026-09-29）。⚠️ 早期所有验证基于 v0.34.0，实机现已前移，H3 结论需在 0.38.0 上复核
+- 注意力内核 `comfy-kitchen 0.2.36`（HIP int8 backend，**有回归 bug，见 §4.1 / §8**）
 - 推理后端 `torch 2.9.1+rocm7.2.1` / HIP 7.2.53211，识别为 AMD RX 7900 XTX（ROCm）
 - system RAM ≥ 31GB（本机 31.9GB 验证），config 页文件保余量
 
@@ -78,9 +79,14 @@ cond = ((h - mean_in) / std_in) @ W * std_out + mean_out
 
 ### 4.1 启动脚本（portable 根目录）
 
-**`run_amd_gpu_enable_dynamic_vram.bat`**（**日常启动 / 主力**；`--enable-dynamic-vram` 在 ROCm <7.14 需手动开启，官方 7.14+ 才默认启用，本机 ROCm 7.2.1 必须加）：
+**`run_amd_gpu_enable_dynamic_vram.bat`**（**日常启动 / 主力（MiniMax H3）**；`--enable-dynamic-vram` 在 ROCm <7.14 需手动开启，官方 7.14+ 才默认启用，本机 ROCm 7.2.1 必须加）：
 ```bat
 %PYTHON% -s %TARGET% --windows-standalone-build --enable-dynamic-vram --disable-pinned-memory --fp16-intermediates --disable-smart-memory --reserve-vram 6 --disable-api-nodes --cache-none --use-ck-attention
+```
+
+**`run_amd_gpu_no_ck_attention.bat`**（**Qwen-Image 2.1 用**——去掉 `--use-ck-attention`，其余逐字与主力一致，保证 A/B 可比。⚠️ 必须用它跑 Qwen-Image，理由见参数表 `--use-ck-attention` 行与 §8）：
+```bat
+%PYTHON% -s %TARGET% --windows-standalone-build --enable-dynamic-vram --disable-pinned-memory --disable-smart-memory --reserve-vram 6 --disable-api-nodes --cache-none --fp16-intermediates
 ```
 
 **`run_amd_gpu.bat`**（**已弃用**，仅保留原版 `.bak` 作对照，勿再日常使用）：
@@ -100,7 +106,7 @@ pause
 - `--reserve-vram 6`：预留 6GB 显存给 OS/桌面软件，避免生成期间切桌面卡顿/驱动超时
 - `--disable-api-nodes`：不加载 API 节点 + 前端不联网；`/prompt` 提交不受影响，plan 脚本照常可用
 - `--cache-none`：不缓存节点执行结果（每次运行全部节点重算），降 RAM/VRAM 占用，代价是重复执行
-- `--use-ck-attention`：启用 **Comfy Kitchen attention**（int8 内核，`comfy_kitchen` 0.2.36，本机 HIP 后端实测可用）。⚠️ 该参数**不是 fallback**：`comfy_kitchen` 缺失或 kernel 不支持时会打印错误并**直接退出**（`attention.py:918 exit(-1)`），本机已验证 `hip int8 avail: True` 才放心启用
+- `--use-ck-attention`：启用 **Comfy Kitchen attention**（int8 内核，`comfy_kitchen` 0.2.36，本机 HIP 后端实测可用）。⚠️ **双重风险**：(1) 该参数**不是 fallback**——`comfy_kitchen` 缺失或 kernel 不支持时会打印错误并**直接退出**（`attention.py:918 exit(-1)`），本机已验证 `hip int8 avail: True`；(2) ⚠️⚠️ **0.2.36 有正确性回归**——token 数跨过 **64**（HIP 核 tile 宽度）时输出崩坏，**Qwen-Image 2.1 已确认**（绿/紫伪影、无异常抛出）。**Qwen-Image 请用 `run_amd_gpu_no_ck_attention.bat`**；H3 文本编码器不受影响（`small_input=True` 提前返回），但 **H3 DiT 主干仍属未验证风险**。完整证据链见 `plan\CK注意力回归问题调查报告.md` + `Plan.md §12`
 - ⚠️ **不要上 `--lowvram/--novram`**（把权重卸到系统内存徒增 swap）；**不要 `--use-sage-attention`**（AMD 无支持 + H3 全局 sage 出纯噪声，issue #15263）
 
 ### 4.2 自定义节点（custom_nodes/）
@@ -170,7 +176,7 @@ python_embeded\python.exe -m pip install opencv-python-headless -i https://mirro
 | `8b\` | `minimax_h3_*-gguf-8b.json` | 8B stock 三套基底 |
 | `op-8b\`（主力） | `minimax_h3_*-gguf-8b-op.json` | 8B stock + 官方 prompt |
 | `op-8b-heretic\` | `minimax_h3_*-gguf-8b-heretic-op.json` | 8B 破限 + 官方 prompt（T2V 用） |
-| 根目录 | `提示词模板-视频.txt` / `提示词模板-照片.txt`；`qwen_image_2_1_*_gguf.json` ×3 | prompt 模板；Qwen-Image 2.1 工作流（与 H3 无关） |
+| 根目录 | `qwen_image_2_1_{t2i,image_edit,background_removal}[-Q8_0]_gguf.json` ×6（+ 3 份 `.pre-q8fix.bak`） | Qwen-Image 2.1（与 H3 无关，**跑它必须换 no_ck 启动脚本**，见 §八）；prompt 模板已迁至 `plan\bat\提示词模板\`，`提示词模板在bat里.txt` 是 0 字节指针 |
 
 替换两处（模板 `UnetLoaderGGUFDynamicVRAM`/`CLIPLoader` → CCTech）：
 1. `UnetLoaderGGUF`：`unet_name=minimax_h3_fl2va_pruned-Q4_K_M.gguf`（ref2v 用 ref2va）
@@ -178,43 +184,58 @@ python_embeded\python.exe -m pip install opencv-python-headless -i https://mirro
 
 自带卸载节点 `ForceUnloadBeforeDecode` x2（采样前 + 解码前）。实测：**解码前卸载有效**（卸掉 DiT 后 VAE 独享显存，解码 ~30s）；**采样前卸载收益≈0**（采样是计算受限不是显存受限）——保留无害。8B 编码器更重（编码期峰值 ≈11–12GB vs 4B ≈3.6GB），**卸载是必需而非优化**。
 
-op 系列（官方 prompt 合规版，§11.9）：T2V/I2V 的 `length` 已从 73 提到 **124≈5s**（官方训练范围下限）；模板 txt（`plan\bat\prompt_{t2v,fl2va,ref2va}_op.txt`）与工作流内嵌 prompt **逐字一致**，脚本 `--prompt-file` 可直接复用。
+op 系列（官方 prompt 合规版，§11.9）：T2V/I2V 的 `length` 已从 73 提到 **124≈5s**（官方训练范围下限）；模板 txt（`plan\bat\归档\prompt_{t2v,fl2va,ref2va}_op.txt`）与工作流内嵌 prompt **逐字一致**，脚本 `--prompt-file` 可直接复用。
 
 需替换素材：i2v 的 `LoadImage` x2（首/末帧）、ref2v 的 `LoadImage`+`LoadVideo`+`LoadAudio`，换自有文件。
 
 ---
 
-## 六、Python 脚本（plan/bat/，2026-09-30 由 plan/ 迁入）
+## 六、Python 脚本（plan/bat/，2026-10-02 重构为「族 × TE 变体」矩阵）
 
-| 脚本 | 用途 |
+**4 个生成族 × 3 个 TE 变体 = 12 个目录 + 2 个工具目录 + 提示词模板/归档/分段归档**。变体唯一差别是 `CCTechClipProjLoader` 的 `clip_name` / `type` / `projection` 三元组（`krea2` / `boogu` 是**节点 type 枚举值**，不是文件名）：
+
+| 后缀 | clip_name | type | projection |
+|---|---|---|---|
+| *(无)* | `qwen3-vl-4b-heretic-Q4_K_M.gguf` | `krea2` | `mmh3-4b-ClipProj-v3.1.safetensors` |
+| `_8b` | `qwen3vl_8b_fp8_scaled.safetensors` | `boogu` | `mmh3-8b-ClipProj-v3.1.safetensors` |
+| `_8b_heretic` | `qwen3-vl-8b-heretic-1.3.0_fp8_e4m3fn.safetensors` | `boogu` | 同上 |
+
+| 族（目录） | 做什么 | 关键差异 |
+|---|---|---|
+| `multisegment[_8b\|_8b_heretic]\` | 多段视频生成（**首尾帧拼接**，fl2va） | 所有段共用一条提示词；`prompt.txt` 三份 |
+| `scenes[_8b\|_8b_heretic]\` | **分镜多段**：每段独立提示词/时长 + **首帧续接** | 纯文本提示词 |
+| `scenes_ref[_8b\|_8b_heretic]\` | **分镜多段 + 多图 / 视频参考** | 支持图片/视频参考 |
+| `ref2va[_8b\|_8b_heretic]\` | 参考图生成视频（ref2va er_sde）+ ffmpeg 拼接 | 段 0 用参考图，后续段首帧续接 |
+| `extract_frames\` | 工具：抽 **首/中/末** 三帧 PNG（`--mid` 调中间帧，防覆盖） | 无 TE 变体 |
+| `qc_frames\` | 工具：QC 抽帧 + contact sheet（配 `vision-deepseek` 识图） | 无 TE 变体 |
+
+每个目录含 `gen_*.py` + `gen_*.bat`（Windows 入口）。`prompt.txt` 随目录（交互模式优先读同目录，另有 `--prompt-file`，UTF-8/GBK 自动识别；`--prompt` 为单条、全部段复用）。输出重名自动追加 `_1/_2` 防覆盖。
+
+| 辅助目录 | 内容 |
 |---|---|
-| `gen_video_ask.py` / `.bat` | 交互式 T2V 生成（提示词/尺寸/时长/Turbo LoRA，回车默认 480P 5s），走 ComfyUI API |
-| `gen_h3_multisegment.py` / `.bat` | **多段视频拼接（4B base）**：段 0 走 t2v，后续段取上段末帧作 first_frame 续接（fl2va），最后 ffmpeg concat 去重首帧；交互模式优先读同目录 `prompt.txt`（另有 `--prompt-file`，UTF-8/GBK 自动识别；`--prompt` 为单条、全部段复用） |
-| `gen_h3_multisegment-8b.py` / `.bat` | 同上，8B stock（`qwen3vl_8b_fp8_scaled`） |
-| `gen_h3_multisegment-8b-heretic.py` / `.bat` | 同上，8B 破限（`qwen3-vl-8b-heretic-1.3.0_fp8_e4m3fn`） |
-| `gen_h3_ref2va.py` / `.bat` | **ref2va 参考图多段生成（4B）**：段 0 用参考图 ref2va（er_sde），后续段 fl2va 首帧续接；`--ref` 多图/目录、`<Picture N>` 引用，全部段共用种子与配置；输出 `h3_ref2va_<seed>.mp4` 防覆盖 |
-| `gen_h3_ref2va-8b.py` / `.bat` | 同上，8B stock |
-| `gen_h3_ref2va-8b-heretic.py` / `.bat` | 同上，8B 破限 |
-| `gen_extract_frames.py` / `.bat` | **抽帧工具**：从视频抽 **首/中/末** 三帧 PNG（ffprobe 读时长，`--mid` 调中间帧位置，防覆盖） |
-| `gen_h3_qc_frames.py` / `.bat` | **QC 抽帧**：ffmpeg 按时间轴抽 8 帧 + tile 拼图，供识图质检（vision-deepseek，见 `vision_qc_识图结论.md`） |
-| `gen_video.py`（依赖，见脚本注释引用） | 核心 API 逻辑 |
-| `prompt.txt` | `gen_h3_multisegment`/`gen_h3_ref2va` 交互模式的提示词模板（整文件作为一条提示词，回车确认或 n 改输） |
-| `prompt_{t2v,fl2va,ref2va}_op.txt` | 官方 prompt 模板（T2VA 三段式 / FL2VA 首行对齐 + 三段式 / ref2va 六段式），供脚本 `--prompt-file` 复用，与 op 工作流内嵌逐字一致 |
+| `提示词模板\` | `MiniMax-H3-提示词书写规则.md`（三字段信封 / `[Shot N]` 时间线 / 摄影机运动词表 / 帧栅格 / R2V 六段）+ `提示词模板-视频.txt` / `-视频 -静止.txt` / `-照片.txt` |
+| `归档\` | 官方三份 op 提示词 `prompt_{t2v,fl2va,ref2va}_op.txt` + 种子记录 |
+| `分段归档\` | 多段生成的分段产物（`seg<N>.mp4` + 首末帧 PNG + 归档说明），按族分子目录 |
+| `prompt说明.txt` | 根级提示词文件用法说明 |
+| `..\bak\` | ⚠️ **早期脚本退场副本，与 `bat\` 内同名文件易混，不要从这里取用** |
 
-依赖：ComfyUI 运行在 `http://127.0.0.1:8188`；ffmpeg（脚本内已写死本机 WinGet 版路径，换机需改 `FFMPEG` 常量）。`gen_h3_multisegment` 输出文件重名时自动追加 `_1/_2` 后缀防覆盖。`-8b` / `-8b-heretic` 变体与对应 4B 版归一后逐字节一致（§11.8.4）。
+依赖：ComfyUI 运行在 `http://127.0.0.1:8188`；ffmpeg（脚本内已写死本机 WinGet 版路径，换机需改 `FFMPEG` 常量）。`-8b` / `-8b-heretic` 变体与对应 4B 版归一后逐字节一致（§11.8.4）。
 
 ---
 
 ## 七、换机一键部署清单
 
-1. 下载官方 `ComfyUI_windows_portable`（core 版本若是 v0.34.0 直接用；更高版本先 `git checkout v0.34.0`，优化全部基于 0.34 验证）
+1. 下载官方 `ComfyUI_windows_portable`。⚠️ 早期优化全部基于 v0.34.0 验证，实机现已升级到 **v0.38.0**（`fb2315f1`）；要复现本仓库全部结论就 `git checkout` 到 0.34.0，要跟实机一致就用 0.38.0 并复核 H3 结论
 2. ROCm 环境（`torch 2.9.1+rocm7.2.1`），启动一次确认 `Recognized AMD device ... RX 7900 XTX ... ROCm`
 3. clone CCTech `ComfyUI-GGUF-Loader` v2.16.7（镜像加速）
 4. 复制 `ComfyUI-ForceUnloadBeforeDecode`（自建节点，单文件）
-5. `pip install gguf sentencepiece protobuf qwen-tts timm opencv-python-headless ...`，**transformers 锁 4.57.3**
+5. `pip install gguf sentencepiece protobuf qwen-tts timm opencv-python-headless ...`，**transformers 锁 4.57.3**，**`comfy-kitchen` 必装**（`--use-ck-attention` 依赖，缺失即 `exit(-1)` 拒启）
 6. 按 §4.4 表放齐 **10 个模型文件**（hf-mirror，走 Aria2UI 多线程；8B 三件套见 §三 T2/T2b）
-7. 部署两个 bat（§4.1）并启动，日志见 73 节点注册
+7. 部署启动脚本（§4.1，H3 用 ck 版 / Qwen-Image 用 `no_ck` 版）并启动，日志见 73 节点注册
 8. 导入工作流（§五，按档位选 `4b\` / `op-8b\` 等）替换素材 → 按 §一参数跑 T2V 冒烟，再 I2V / R2V
+9. 改任何模型/分辨率组合前，先跑 `python plan\vram_model.py` 过判据（`Plan.md §3.6` 速查）
+
+> **仓库不含的两类本机资产**（2026-10-02 裁决）：`API_workflows\`（API 格式工作流，走 `/prompt` 提交，含 `final\` 交付层 15 份 + README）保留在实机 `D:\localAI\ComfyUI-last\plan\API_workflows\`，随本机使用不随仓库分发；`bat\分段归档\`、`归档\日志\` 下的 mp4 / log / png 产物同理不入库（见 `plan\README.md §8`）。
 
 ---
 
@@ -227,6 +248,9 @@ op 系列（官方 prompt 合规版，§11.9）：T2V/I2V 的 `length` 已从 73
 - 若 I2V/R2V 引用图/视频失败：换官方 bf16 编码器 `qwen3vl_4b_fp8_scaled.safetensors` 或 heretic bf16（8.3GB）
 - ❌ 8B 破限（T2b）**不要用于 I2V/R2V**：视觉塔 116 个张量降 F8_E4M3，图像路径有真实精度损失（§11.11.4）；破限只做 T2V 备选
 - 8B 首跑前**关掉其它 GPU 程序**：编码期峰值 ≈11–12GB（4B ≈3.6GB），T2b staged 16,721MB 超出可用显存需分页（§11.8.5）
+- ❌ **`--use-ck-attention` + Qwen-Image 2.1 = 输出崩坏**（2026-10-01 实测确认）：comfy-kitchen 0.2.36 的 masked attention 重写在**存活 token >64**（HIP 核 tile 宽度）时产出绿/紫伪影、纹理破碎，**且不抛任何异常**。**对策：Qwen-Image 改用 `run_amd_gpu_no_ck_attention.bat`。** 排查口诀：任何「提示词太长就崩」的症状，**先查启动 flag，别怀疑模型限制**。H3 文本编码器不受影响（`small_input=True` 提前返回 `attention_basic`），H3 DiT 主干**待验证**。详见 `plan\CK注意力回归问题调查报告.md`（5 组 flag 对照 + token 二分 + 源码定位）与 `Plan.md §12`
+
+> **ck-attention 现状速查**：加速 2.70x（真）· H3 文本侧安全（已核实源码）· Qwen-Image 2.1 崩坏（已确认）· H3 DiT 未验证 · 上游 issue [comfy-kitchen#226](https://github.com/Comfy-Org/comfy-kitchen/issues/226) 无修复版本 · 升级 comfy-kitchen 后必须重测 64 token 边界
 
 ---
 
@@ -238,5 +262,9 @@ op 系列（官方 prompt 合规版，§11.9）：T2V/I2V 的 `length` 已从 73
 | `ComfyUI_MiniMaxH3_From_Scratch.md` | 从零重建全流程（干净 portable → 可跑） |
 | `T2V_4B_vs_8B_对比报告.md` | 4B vs 8B 单变量对比（耗时/显存/逐帧指标），含 0.6MP 补测与破限 A/B（2026-09-30） |
 | `vision_qc_识图结论.md` | H3 产物画质识图结论（vision-deepseek 通道，抽帧 QC） |
-| `bat\`（脚本） | 全部 Python 脚本 + bat 启动器 + prompt 模板（§六） |
+| `bat\`（脚本） | 全部 Python 脚本 + bat 启动器 + prompt 模板（§六），**按族 × TE 变体分 14 个子目录** |
 | `molbal_workflows\final\` | 工作流全集（§五） |
+| `README.md`（plan 内） | **plan 目录索引**：五区语义、文档清单、脚本族矩阵、工作流矩阵、整理记录、硬规矩（换机先读这份） |
+| `vram_model.py` | **显存估算模型**（纯标准库）：输出 `Plan.md §3` 全部表格，改常量即重算。改配置前先跑它算判据 |
+| `CK注意力回归问题调查报告.md` | ⚠️ `--use-ck-attention` 回归完整证据链（5 组 flag 对照 / token 64 边界二分 / 源码定位 / 版本溯源），对应 `Plan.md §12` |
+| `归档\日志\来源清单.md` | 12 个 `*.log` 归档前后路径对照（log 本身不入库） |

@@ -3,7 +3,7 @@
 - **测试日期**：2026-09-30 11:21 ~ 11:37（主对比）；12:06 补测 8B @ 0.60 MP / 4 秒，见 **§9**；13:00~13:20 破限 8B TE A/B，见 **§10**
 - **测试范围**：仅 T2V，0.40 MP，5 秒，4B 与 8B 两组严格单变量对比（§1~§9）；**8B 文本编码器 stock vs Heretic 破限版单变量对比**（§10）
 - **机器**：AMD Radeon RX 7900 XTX，24,560 MB 独显
-- **原始数据**：`plan\t2v_4b_vs_8b_results.json`（机器可读）、`plan\op_gpu_mem.csv`（3 秒粒度显存采样，358 点）、`plan\ab_8b_heretic_metrics.json`（§10 三组逐帧指标）
+- **原始数据**：`plan\t2v_4b_vs_8b_results.json`（机器可读）、`plan\op_gpu_mem.csv`（3 秒粒度显存采样，308 数据行）、`plan\ab_8b_heretic_metrics.json`（§10 三组逐帧指标）
 - **产物**：`ComfyUI\output\video\MiniMax_H3_00165_.mp4`（4B）、`MiniMax_H3_00166_.mp4`（8B stock）、`MiniMax_H3_00168_.mp4`（8B stock 复跑）、`MiniMax_H3_00169_.mp4`（8B 破限）
 - **相关文档**：分辨率换算表与耗时模型见主计划 `plan\ComfyUI_MiniMaxH3_AMD_7900XTX_Plan.md` **§11.10**
 
@@ -209,7 +209,7 @@ Shot 4 从 00:04.000 开始：
 | `plan\T2V_4B_vs_8B_对比报告.md` | 本报告 |
 | `plan\t2v_4b_vs_8b_results.json` | 0.40 MP 两组完整实测数据（含 ffprobe 字段） |
 | `plan\t2v_8b_060_4s_result.json` | **0.60 MP / 4 秒补测数据**（§9，含越界标记） |
-| `plan\op_gpu_mem.csv` | 显存采样原始日志，3 秒间隔。**已被 12:06 那一轮覆盖**（现为 300 点，11:55:56→12:11:01；此前 358 点那轮的数据已并入 `t2v_4b_vs_8b_results.json` 的 `mem_peak_mb` / `mem_floor_mb` 字段） |
+| `plan\op_gpu_mem.csv` | 显存采样原始日志，3 秒间隔。**已被 12:06 那一轮覆盖**（现为 **308 数据行**，11:55:56→12:11:25，峰值 21,473 MB / 谷值 7,379 MB）；此前那一轮的数据已并入 `t2v_4b_vs_8b_results.json` 的 `mem_peak_mb` / `mem_floor_mb` 字段。<br>⚠️ `t2v_8b_060_4s_result.json` 的 `gpu_mem_samples` 字段写的是 `300`，与 CSV 实际 308 行差 8 行（采样线程收尾多写），以 CSV 实际行数为准 |
 | `plan\op_matrix_results.jsonl` | 测试进程原始记录。**每次开跑前会清空**，现仅存 12:06 那一轮 1 行（0.40 MP 两组的原始记录在 `t2v_4b_vs_8b_results.json`） |
 | `ComfyUI\output\video\MiniMax_H3_00165_.mp4` | 4B @ 0.40 MP 产物 |
 | `ComfyUI\output\video\MiniMax_H3_00166_.mp4` | 8B @ 0.40 MP 产物 |
@@ -422,8 +422,8 @@ gen_h3_qc_frames.bat --dir "D:\...\output\video" --count 6 --sheet --only 165,16
 | `plan\ab_8b_heretic_results.jsonl` | 两条生成记录（**显存字段无效，见 §10.5**） |
 | `plan\ab_8b_heretic_metrics.json` | 三组逐帧 sha256 / SSIM / PSNR（**干净重算，以此为准**） |
 | `plan\ab_8b_heretic_full.json` / `ab_8b_heretic_compare.json` | 生成 + 比对原始记录 |
-| `plan\comfyui_restart_heretic.log` / `.err.log` | 重启后 ComfyUI 日志（staged 行出处） |
-| `plan\bat\dl_8b_heretic.log` | aria2 下载日志 |
+| `plan\归档\日志\comfyui_restart_heretic.log` / `.err.log` | 重启后 ComfyUI 日志（staged 行出处） |
+| `plan\归档\日志\dl_8b_heretic.log` | aria2 下载日志（⚠️ 早前写的 `plan\bat\dl_8b_heretic.log` 是失效路径，实际曾位于 `plan\bat\归档\`；2026-10-02 统一归档） |
 | `models\text_encoders\qwen3-vl-8b-heretic-1.3.0_fp8_e4m3fn.safetensors` | 破限 8B TE，10,017,064,632 B |
 | `plan\API_workflows\op-8b-heretic\*.json`（3 份） | 破限 API 工作流（TE 节点 131/137） |
 | `plan\molbal_workflows\final\op-8b-heretic\*.json`（3 份） | 破限 UI 工作流 |

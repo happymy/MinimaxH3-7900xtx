@@ -1,0 +1,69 @@
+================================================================================
+prompt.txt 对照说明（13 个生成脚本）
+================================================================================
+写于 2026-10-02。素材：各脚本目录下 img/1_女孩.png、img/2_男孩.png
+（DeepSeek 识图确认：白底无缝棚拍全身照，学童校服，无画面文字）。
+
+--------------------------------------------------------------------------------
+1. 四个家族的 prompt.txt 怎么用
+--------------------------------------------------------------------------------
+multisegment / multisegment_8b / multisegment_8b_heretic
+    整文件 = 一条提示词，所有段共用。文件里不能加注释行。
+    跑法：python gen_h3_multisegment.py --prompt-file prompt.txt --segments 3 --duration 5
+    段 0 是 t2v（没有参考图，外观全靠提示词自述），段 i>0 用上段末帧首帧续接。
+
+ref2va / ref2va_8b / ref2va_8b_heretic
+    整文件 = 一条提示词（官方六段式）。文件里不能加注释行。
+    跑法：python gen_h3_ref2va.py --prompt-file prompt.txt --ref-dir img --segments 3 --duration 5
+    --ref-dir 传目录；标签顺序按 Python sorted()，所以 <Picture 1>=女孩、<Picture 2>=男孩。
+
+scenes / scenes_8b / scenes_8b_heretic
+    按「### 或 === 开头的行」切块，块数 = 镜头数；# 开头的整行是注释会被忽略。
+    跑法：python gen_h3_scenes.py --prompt-file prompt.txt --duration 4,4,4
+    每块一段，段 i>0 用上段末帧首帧续接。
+
+scenes_ref / scenes_ref_8b / scenes_ref_8b_heretic
+    同样切块。块 1 走 ref2va（用 <Picture i>，需要 --ref-dir img），
+    块 2/3 走 fl2va（纯文本，不写 <Picture>，靠首帧续接）。
+    跑法：python gen_h3_scenes_ref.py --prompt-file prompt.txt --ref-dir img --duration 4,4,4
+
+--------------------------------------------------------------------------------
+2. 为什么这三段动作都是「幂等」的（重要）
+--------------------------------------------------------------------------------
+multisegment 和 ref2va 的所有段共用同一条提示词。如果提示词里写的是
+过程/递进动作（手指从额头滑到发际、掏出手机、镜头先拉后推），模型会在
+每一段都重新演一遍，成片出现动作循环或画面抽搐。
+
+本次写的三个动作都刻意做成「重复执行和接着演，产出的画面一样」：
+    挥手        —— 循环动作，重复挥手还是挥手，无害
+    相视而笑    —— 状态而非过程，保持即可
+    呼吸/眨眼   —— 持续状态
+所以即使 scenes / scenes_ref 触发 --max-duration 自动拆分，也不会重演出戏。
+
+--------------------------------------------------------------------------------
+3. 写这些提示词时遵守的规则
+--------------------------------------------------------------------------------
+来自 提示词模板/提示词模板-视频.txt（社区实测，H3 是 CFG-distilled，无负面路径）：
+  * 排除项一律用正面可观测句式：Exactly one/two people is visible...
+    the frame contains no captions, no logos, and no on-screen text.
+  * 禁用词（会触发 H3 全局平滑、画面发虚）：soft lighting / dreamy /
+    atmospheric haze / flawless / cinematic blur —— 13 个文件已全部规避
+  * 用 Broad diffused frontal illumination from a large softbox 代替 soft lighting
+  * 画质锁定用正面句：The frame edges are razor-sharp with zero softening
+
+来自联网检索到的实测经验：
+  * 一个镜头只给一个机位运动（不要 pan+truck+push 叠加）
+  * [Static shot] 开头 + 文字复述 "the camera stays completely still"
+    是抑制模型自作主张漂移最可靠的组合 —— 本次四族全部采用
+  * 不写台词：台词会引入 speaker ID、时长挤压、音画不同步三重风险，
+    声音全部交给 overall_soundscape
+  * 不写非叙事性配乐（non_diegetic_music: N/A），避免与画面声音抢注意力
+  * detailed_description 目标区间 350-500 英文词，本次 252-390 词
+  * 分块模式不要在块内写绝对时间戳（每单元都从 0 起算，写了必错）
+
+--------------------------------------------------------------------------------
+4. 素材与安全
+--------------------------------------------------------------------------------
+参考图为未成年人校服棚拍照。本套提示词刻意避开任何身体接触与暧昧表述，
+只用「站立 / 挥手 / 相视而笑 / 呼吸眨眼」这类零接触动作。
+如果要改写成别的情节，请自行确认内容合适。

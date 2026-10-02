@@ -32,12 +32,13 @@
 
 | 项 | 值 |
 |---|---|
-| ComfyUI | 0.34.0（`ComfyUI_windows_portable`） |
+| ComfyUI | **0.38.0**（`ComfyUI_windows_portable`，commit `fb2315f1`，2026-09-29）。⚠️ 早期章节写的 0.34.0 已过时，实机已升级 |
 | 推理后端 | `torch 2.9.1+rocm7.2.1` / HIP 7.2.53211，识别为 AMD RX 7900 XTX（ROCm，非 CUDA） |
-| 启动脚本 | `run_amd_gpu_enable_dynamic_vram.bat`（**主力日常启动**）；`run_amd_gpu.bat`（**已弃用**，仅 `.bak` 存档对照） |
+| 注意力内核 | `comfy-kitchen 0.2.36`（HIP int8 backend，**有回归 bug，见 §12**）；triton 未安装 |
+| 启动脚本 | `run_amd_gpu_enable_dynamic_vram.bat`（**H3 主力日常启动**，含 `--use-ck-attention`）；`run_amd_gpu_no_ck_attention.bat`（**Qwen-Image 用**，除 ck 开关外与主力逐字一致，见 §12.4）；`run_amd_gpu.bat`（**已弃用**，仅 `.bak` 存档对照） |
 | GGUF 加载器 | **CCTech Suite**（`ComfyUI-GGUF-Loader` v2.16.7）已装，注册 `UnetLoaderGGUF` / `CLIPLoaderGGUF` / **`CCTechClipProjLoader`**（`nodes/extra.py:74`，CLIPLoaderGGUF 子类，可一次性「加载 GGUF 文本塔 + 应用投影矩阵」，输出 CLIP），纯 torch+`gguf` 包解包（无 llama.cpp），内置 MiniMax H3 支持。⚠️ **已修复**：import 链上的 `krea2.py→vendor/depth_anything_v2.py` 缺 `cv2` 曾导致整包被 ComfyUI 跳过，已向 `python_embeded` 装 `opencv-python-headless`（阿里云源），现 73 节点正常注册 |
 | 编码器 | `text_encoders/qwen3-vl-4b-heretic-Q4_K_M.gguf`（~2.3GB 文本塔）+ 配套 `text_encoders/qwen3-vl-4b-heretic.mmproj-f16.gguf`（836MB 视觉塔，CCTech loader 自动合并，详见 §10.3） |
-| 扩散模型 | `diffusion_models/minimax_h3_fl2va_pruned-Q4_K_M.gguf`、`ref2va_pruned-Q4_K_M.gguf`（均已在 `diffusion_models\`，共 ~22.8GB 十进制；**实测 `UnetLoaderGGUF` 直接读得到，无需复制到 `models\unet\`**） |
+| 扩散模型 | `diffusion_models/minimax_h3_fl2va_pruned-Q4_K_M.gguf`、`diffusion_models/minimax_h3_ref2va_pruned-Q4_K_M.gguf`（均已在 `diffusion_models\`，共 ~22.8GB 十进制；**实测 `UnetLoaderGGUF` 直接读得到，无需复制到 `models\unet\`**） |
 | 投影矩阵 | `clip_projections/mmh3-4b-ClipProj-v3.1.safetensors`（25.0MB） |
 | VAE | `vae/minimax_h3_video_vae_fp16.safetensors`（5.2GB）、`vae/minimax_h3_audio_vae_fp32.safetensors`（0.6GB） |
 
@@ -68,21 +69,120 @@ cond = ((h - mean_in) / std_in) @ W * std_out + mean_out
 
 ---
 
-## 3. 显存预算（分阶段，各自峰值 ≤ 24GB）
+## 3. 显存预算（分阶段；含模型卸载与动态显存常空量）
 
-| 阶段 | 驻留 | 峰值估算 | 达标 |
-|---|---|---|---|
-| ① prompt 编码（T2V） | 4B 编码器 ~2.5GB + 激活 | ≤ 4GB | ✅ |
-| ② 采样（T2V/I2V） | fl2va 11.4GB + 图像/音频激活 | ~14–16GB | ✅ |
-| ② 采样（R2V） | ref2va 11.4GB + 引用 tokens 激活 | ~15–17GB | ✅ |
-| ③ VAE decode | video VAE 5.2GB + audio VAE 0.6GB（卸载 UNet 后） | ≤ 10GB | ✅ |
+> 本节 2026-10-02 重写：原表是实测前的粗估，现全部替换为**代码路径推导 + 文件实测字节 + 实测峰值校准**的模型。
+> 复算脚本：`plan\vram_model.py`（纯标准库，`python vram_model.py` 直接输出本节全部表格；改任一常量即可重算）。
 
-关键纪律：**同一时刻只驻留一个「大件」**（编码器 / 扩散模型 / VAE）。核心 ComfyUI **没有** `Unload Model` 节点（已核实 execution.py / model_management.py），实际卸载靠两种内置机制：
+### 3.1 三个必须分清的量（最容易混淆的就是这里）
 
-1. **默认（NORMAL_VRAM）被动卸载**：每次 `load_models_gpu()` 前 `free_memory()` 按整张图所需显存检查，装不下时按 LRU 卸载最旧的模型。三阶段顺序执行时，加载采样模型会自动踢掉编码器、加载 VAE 会自动踢掉扩散模型——只要顺序跑就有保证。
-2. **`--disable-smart-memory` 主动卸载**：该标志下每次 prompt 执行完毕调用 `unload_all_models()`（execution.py:836）清空全部驻留。代价：每次生成结束模型全部卸载、下次重新加载慢一点；适合「跑一把歇一把」的用法。
+| 量 | 值 | 来源 | 含义 |
+|---|---:|---|---|
+| `V_total` | 24,560 MiB | 启动日志 `Total VRAM 24560 MB` | 适配器总量 |
+| `EXTRA_RESERVED_VRAM` | 6,144 MiB | `--reserve-vram 6` → `model_management.py:884` | **双重作用**：① `load_models_gpu` 准入检查的 `extra_mem` 项；② `main.py:72` 传给 `comfy_aimdo.control.init(simple_vram_headroom=6 GiB)`，驱动层保持 6 GiB 常空 |
+| `B_adapter` | 2,923 MiB | WMI 实测（ComfyUI **未运行**时） | 非 ComfyUI 占用（驱动池 / 桌面合成器 / 浏览器硬件加速），随桌面状态浮动 |
+| `minimum_inference_memory()` | 6,963 MiB | `model_management.py:890` = 0.8 GiB + 6 GiB | 每次装载的最低预留 |
 
-任何阶段之间不叠加即不会 OOM，也不会触底到 swap。
+由此得到**两个不同的界**：
+
+```
+[装载判据]  可驻留上限 = V_total − reserve          = 18,416 MiB
+[实际可用]  可驻留上限 − B_adapter                  = 15,493 MiB
+```
+
+> ⚠️ **18,416 MiB 不是 WMI 峰值的上界。** 实测最高的 4B 那一轮 WMI 峰 22,459 MiB，比它还高 4,043 MiB。
+> WMI `Win32_PerfFormattedData_GPUPerformanceCounters_GPUAdapterMemory.DedicatedUsage` 是**适配器口径**
+> （单位为字节，需除 1024² 才是 MiB），含驱动保留池、ROCm/HIP kernel workspace、torch 非缓存分配、
+> 主机映射缓冲——这些都不过 ComfyUI 的账，也不在 comfy-aimdo 的 6 GiB headroom 管辖内。
+
+### 3.2 staged 系数：磁盘大小 ≠ GPU 驻留
+
+同一份 TE 换个精度档，GPU 占用能差 1.75 倍。这是本项目最反直觉的一条。
+
+| 变体 | 磁盘 MiB | staged MiB（实测） | 系数 | 原因 |
+|---|---:|---:|---:|---|
+| T1 4B | 3,179 | 3,686 | **1.160** | GGUF 直接映射，膨胀来自结构开销 |
+| T2 8B stock | 10,098 | 10,097 | **1.000** | 全 fp8，原样上卡 |
+| T2b 8B 破限 | 9,553 | 16,721 | **1.750** | 混合精度，116 个 fp8 张量上卡后被上采样 |
+
+**T2b 磁盘比 T2 还小 545 MiB，GPU 占用却多 6,624 MiB。** 这就是 §11.4 里 T2b 标「⚠️ 超出可用显存」的全部原因。
+
+### 3.3 分阶段可行性判据
+
+```
+某个大件能装下  ⟺  phase_weight ≤ 15,493 MiB
+```
+
+| 阶段 | 权重 MiB | 占预算 | 余量 | 判定 | 说明 |
+|---|---:|---:|---:|:---:|---|
+| ① TE 4B（T1） | 3,204 | 20.7% | +12,289 | ✅ | GGUF 文本塔 + mmproj + proj |
+| ① TE 8B stock（T2） | 10,138 | 65.4% | +5,355 | ✅ | fp8 safetensors，自带视觉塔 |
+| ① TE 8B 破限（T2b） | **16,721** | **107.9%** | **−1,228** | ❌ | staged 实测值，非磁盘值 |
+| ② 采样 UNet（全驻留假设） | 10,892 | 70.3% | +4,602 | ✅ | **实际流式**，见 §3.4 |
+| ③ VAE decode | 5,544 | 35.8% | +9,949 | ✅ | `ForceUnloadBeforeDecode` 后 UNet 已腾空 |
+
+判据逐条复算，与实测标注一致：
+
+- T2b `16,721 > 15,493` → **超 1,228 MiB**，判定不可用 ✔ 与 §11.4 标注吻合
+- T2 `10,097 < 15,493` → 余 5,396 MiB，判定可用 ✔
+
+### 3.4 为什么 ② 采样阶段的实测峰值反而不随分辨率单调上升
+
+三个实测点的 WMI 峰值：
+
+| run | WMI 峰 | WMI 谷 | 谷→峰增量 | 峰 − 装载界 | MP | 帧 |
+|---|---:|---:|---:|---:|---:|---:|
+| 4B 0.415MP 124f | **22,459** | 3,815 | 18,644 | +4,043 | 0.415 | 124 |
+| 8B 0.415MP 124f | 20,761 | 7,405 | 13,356 | +2,345 | 0.415 | 124 |
+| 8B 0.642MP 107f | 21,473 | 7,355 | 14,118 | +3,057 | 0.642 | 107 |
+
+三点跨度仅 1,698 MiB（8.2%），且**分辨率最高的那点不是最高点**；**谷值最低的 4B 反而峰值最高**。
+
+结论：**WMI 峰值度量的是「拿走了多少」，不是「需要多少」**。
+
+- 准入（`load_models_gpu` → `free_memory`）只决定「装不装得下」；
+- 装下之后由 comfy-aimdo 的 6 个 hook（启动日志 `installing 6 hooks`）按 NVML 压力分块回收，
+  可用越多、吃越多；
+- `--disable-smart-memory` 关掉的正是「装不下时主动踢模型」这条退路，所以更依赖 aimdo 的细粒度回收。
+
+**所以不要再用「峰值大小」去反推模型需求**——那会把「当时空闲多少」误读成「这东西多贵」。
+要评估需求，用 §3.3 的装载判据 + §3.2 的 staged 系数。
+
+### 3.5 卸载纪律（代码已核实）
+
+同一时刻只驻留一个「大件」（编码器 / 扩散模型 / VAE）。核心 ComfyUI **没有** `Unload Model` 节点
+（已核实 `execution.py` / `model_management.py`），实际卸载靠三种机制：
+
+1. **被动卸载**：`load_models_gpu()` 前调 `free_memory()`（`model_management.py:893`），
+   内部按 `(-model_offloaded_memory(), refcount, model_memory(), i)` 排序后从最旧的开始踢。
+   三阶段顺序执行时，加载采样模型自动踢掉编码器、加载 VAE 自动踢掉扩散模型。
+2. **`--disable-smart-memory` 主动卸载**：每轮 prompt 执行完毕调 `unload_all_models()`
+   （`execution.py:836` 已核实）→ `free_memory(1e30)` 清空全部驻留。
+   代价：每次生成结束全部卸载、下次重新加载慢一点。
+3. **`ForceUnloadBeforeDecode` 节点**：三套 op 工作流均含，强制 VAE 解码前腾空 UNet
+   —— 这是让 ③ 阶段只剩 5,544 MiB 的前提。
+
+卸载后**权重回落到 CPU，不回落显存计数**：`unet_inital_load_device()` 在
+`aimdo_enabled` 或 `DISABLE_SMART_MEMORY` 下均返回 `cpu`（`model_management.py:1112`），
+`unet_offload_device()` 在 `NORMAL_VRAM` 下返回 `cpu`（`:1106`），故采样期间 UNet 权重是
+**按块流式**上下卡，不是全驻留——这解释了为何 ② 阶段实测峰值（13–19 GiB）并未达到
+「UNet 全驻留 + 激活」的朴素预期。
+
+### 3.6 速查：改配置前先过判据
+
+单个大件上限 **15,493 MiB**（占 24,560 的 63%）。要换 TE / 换 VAE / 加并行实例前，先把目标权重
+和 `B_adapter`（当前实测 2,923 MiB，用 WMI 现取）代进 §3.3 的判据。
+
+### 3.7 本模型的已知局限
+
+1. **分辨率斜率不可用**：仅有一对同 TE 对照（0.415MP/124f vs 0.642MP/107f），
+   但分辨率与帧数同时变化（+0.227 MP / −17 帧），算出的 3,132 MiB/MP **无法归因**。
+   §11.10.4 预测的 0.60 MP @124 帧（12.2 分钟）尚未实跑，此斜率不得用于外推。
+2. **`B_adapter` 是快照**：2,923 MiB 取自 ComfyUI 停止时的瞬时值，桌面负载变化会浮动；
+   实测峰值（20,761–22,459 MiB）当时的 `B_adapter` 未知，故 §3.4 未做基线扣除。
+3. **② 采样阶段的流式窗口无直接测量**：10,892 MiB 是「全驻留」上界假设，
+   真实窗口大小取决于 comfy-aimdo 的分块粒度，本机无对应日志，故 §3.3 中该行标为上界。
+4. **T1 staged 3,686 MiB 精度较粗**：来自文档旧值「~3.6 GB」，未逐字节复核。
 
 ---
 
@@ -92,7 +192,7 @@ cond = ((h - mean_in) / std_in) @ W * std_out + mean_out
 
 ### 4.1 fl2va 扩散模型（T2V/I2V 必需）— ✅ 已下载
 - 仓库：`molbal/MiniMax-H3-GGUF`（GGUF 制作者本人，与 ref2va 同源同量化风格，pruned Q4_K_M，20B 参数下 Q4_K_M ≈ 11GB）
-- 文件：`minimax_h3_fl2va_pruned-Q4_K_M.gguf`（+ `ref2va_pruned-Q4_K_M.gguf` 同批次下载）
+- 文件：`minimax_h3_fl2va_pruned-Q4_K_M.gguf`（+ `minimax_h3_ref2va_pruned-Q4_K_M.gguf` 同批次下载）
 - 已保存到：`ComfyUI_windows_portable\ComfyUI\models\diffusion_models\`
 - ⚠️ 两个 gguf 目前在 `diffusion_models\`（= `unet\` 别称）。若 `UnetLoaderGGUF` 报找不到文件，复制一份到 `models\unet\` 即可。
 
@@ -187,7 +287,7 @@ cond = ((h - mean_in) / std_in) @ W * std_out + mean_out
   官方 32B safetensors 编码器（自带 vision），换成 GGUF 4B 后引用图路径由 mmproj 视觉塔提供（见 R4）。
 
 ### 5.3 R2V（用 ref2va + 引用图/视频/音频）
-- `plan\molbal_workflows\final\4b\minimax_h3_ref2v-gguf.json`：同 §5.1 两处替换（unet 用 `ref2va_pruned-Q4_K_M.gguf`）；
+- `plan\molbal_workflows\final\4b\minimax_h3_ref2v-gguf.json`：同 §5.1 两处替换（unet 用 `minimax_h3_ref2va_pruned-Q4_K_M.gguf`）；
   `LoadImage`〔149〕/`LoadVideo`〔156〕/`LoadAudio`〔153〕默认素材 → 换自己的。
 - 引用路径同样依赖编码器 vision；GGUF 编码器下与 I2V 相同的失败退路。
 
@@ -203,7 +303,7 @@ cond = ((h - mean_in) / std_in) @ W * std_out + mean_out
 
 ## 7. 执行清单（验收顺序）
 
-- [x] 下载 §4.1 fl2va/ref2va + §4.3 矩阵（已完成，均已在本地）。
+- [x] 下载 §4.1 fl2va/ref2va + §4.2 投影矩阵（已完成，均已在本地）。
 - [x] ClipProj 实现确认（改用 CCTech 内置 `CCTechClipProjLoader`，未用 nicolab28）。
 - [x] 三套 Molbal 工作流改编完成 → `plan\molbal_workflows\final\4b\`，JSON 已校验。
 - [x] CCTech 包加载修复（缺 `cv2` → 装 `opencv-python-headless`）：T2V 导入无报错，节点 73/73 注册。
@@ -316,7 +416,7 @@ cond = ((h - mean_in) / std_in) @ W * std_out + mean_out
 ---
 
 ### 10.6 联网续查优化手段（2026-09-09，含本机实测结论）：5s 仍是甜点，10s 是「能跑但极限」
-> 结论：**两条启动参数（`--disable-pinned-memory --fp16-intermediates`）已加入 `run_amd_gpu.bat`（.bak 已备份；该脚本此后被 `run_amd_gpu_enable_dynamic_vram.bat` 取代，现仅存档对照，见 §1）**。本机实测：RAM 占用确实下降（幅度不大）、10s 不再爆显存——但 10s 已非常极限，不安全，且耗时是 5s 的 3 倍多；**内存耗尽时仍会崩溃**（更正：只降低了单次内存消耗、不容易触发，并非消除 OOM 崩溃）。最终维持 5s 为甜点档位。**
+> 结论：**两条启动参数（`--disable-pinned-memory --fp16-intermediates`）已加入 `run_amd_gpu.bat`（.bak 已备份；该脚本此后被 `run_amd_gpu_enable_dynamic_vram.bat` 取代，现仅存档对照，见 §1）。本机实测：RAM 占用确实下降（幅度不大）、10s 不再爆显存——但 10s 已非常极限，不安全，且耗时是 5s 的 3 倍多；**内存耗尽时仍会崩溃**（更正：只降低了单次内存消耗、不容易触发，并非消除 OOM 崩溃）。最终维持 5s 为甜点档位。**
 
 - **原稿否定回顾**：§10.5 曾把「10s 爆显存」定为换页硬墙、不再试。该判断建立在缺启动参数的前提下，需降级为「未验证的可解瓶颈」。
 - **已验证同款硬件的正解（tonyd2wild/MiniMax-H3-Local，3090+31GB RAM）**：
@@ -330,6 +430,7 @@ cond = ((h - mean_in) / std_in) @ W * std_out + mean_out
 - **不适用于本机的提速项（已排查排除）**：
   - `--use-sage-attention`：**三重否决**——(1) 本机无 triton，ROCm 下装不了；(2) **AMD 官方实测 Navi31（RDNA3）上 sage 比 PyTorch SDPA 慢 30–34%**，它根本不是 AMD 上的提速项；(3) issue #15263 证实 H3 用全局 sage 产生**纯噪声**（需模型内低精度开关，本机 GGUF 路径无此开关）。
   - ✅ **替代方案已采纳：`--use-ck-attention`**（ComfyUI 自带 comfy_kitchen INT8 attention）。本机端到端 A/B 实测（同 seed 1234、8 步、1280×736×107f）：采样 **106.0 → 39.26 s/it（2.70x）**；总耗时 1005s → 498s（2.02x）；峰值专用显存 **21.37 → 20.97 GiB（反降 0.40）**；共享显存 567 → 743 MB，从未触发分页。全 107 帧逐帧比对：相关系数 0.99786、平均像素差 2.33/255、锐度 +4.05%、平坦区噪声 −5% → 差异集中在细节而非加噪。已追加到 `run_amd_gpu_enable_dynamic_vram.bat` 末尾。
+    - ⚠️ **2026-10-01 补充警告**：`--use-ck-attention` 在 comfy-kitchen 0.2.36 上存在**正确性回归**（token >64 崩坏，Qwen-Image 2.1 已确认；H3 DiT 待验证）。本节结论**仅适用于 H3**，Qwen-Image 必须改用 `run_amd_gpu_no_ck_attention.bat`。完整证据链见 **§12**。
   - Optimization Suite（NVFP4 Fused MLP / Low-Memory Sage2）：**Blackwell/NV 专属**，AMD 无效。
   - CAB Sampler（低步数 solver）：面向原生 ComfyUI 节点，GGUF 路径接入存疑，且非官方，优先级低。
   - **Tiled VAE 对 H3 无效**：tonyd2wild 实证 `vae.decode_tiled` 直接落到 `self.decode`，H3 VAE 已内建 tile（256px 空间 / 17 帧时间），别浪费时间。
@@ -384,7 +485,7 @@ cond = ((h - mean_in) / std_in) @ W * std_out + mean_out
 
 文本编码器**只产出 embedding，从不向用户生成文本**，因此不存在「拒绝」这一行为。ClipProj README 实测：把 bf16 校准的矩阵套用到 **abliterated（去审查）fp8 编码器**上，conditioning 余弦差仅 **0.0023** —— 去审查对条件化的**数值**影响可忽略。
 
-- 本机现有 `qwen3-vl-4b-heretic-*.gguf` **本身就是 abliterated 版**（§4.3 / §10.3 链路已确认），**T2V 快档的「无道德约束」已满足，保持不动**。
+- 本机现有 `qwen3-vl-4b-heretic-*.gguf` **本身就是 abliterated 版**（§4.2 投影矩阵 / §10.3 链路已确认），**T2V 快档的「无道德约束」已满足，保持不动**。
 - 去审查只在**会生成文本**的场景才要紧 —— 即 32B 的 prompt-enhancer tail（layers 50–63 + LM head）。不上 32B 就不涉及。
 - **⚠️ 2026-09-30 修正**：本节原写「`heretic-org/Qwen-3-VL-8B-Instruct-heretic` 是 transformers 分片格式，目前无人发布其 ComfyUI 单文件版」——**此判断已被推翻**。`DreamFast/Qwen3-VL-8B-Heretic-1.3.0` 发布了 ComfyUI 单文件 safetensors（含 `comfyui/` 子目录三档量化），已下载并跑通，详见 **§11.11**。
 - 但「余弦差 0.0023」不等于「输出不变」。**§11.11 的本机 A/B 实测证明：换成破限版后 124 帧全部改变（0/124 一致，SSIM 0.8264）**。所以正确表述是「去审查**不改变 TE 的角色与可用性**」，而不是「换不换都一样」。
@@ -399,12 +500,15 @@ cond = ((h - mean_in) / std_in) @ W * std_out + mean_out
 
 ### 11.4 三档配置（物理并存，靠下拉框切换）
 
-| 档 | 用途 | 文本编码器 | 投影矩阵 | node #131 `type` | 磁盘 | TE 显存 |
+| 档 | 用途 | 文本编码器 | 投影矩阵 | node #131 `type` | 磁盘（MiB / GiB） | TE 显存 |
 |---|---|---|---|---|---:|---:|
-| **T1 现状** | T2V 快档 | `qwen3-vl-4b-heretic-Q4_K_M.gguf` + `qwen3-vl-4b-heretic.mmproj-f16.gguf` | `mmh3-4b-ClipProj-v3.1.safetensors` | `krea2` | 3.11 GB | ~3.6 GB（实测） |
-| **T2** | **I2V / R2V 主力** | `qwen3vl_8b_fp8_scaled.safetensors`（**Comfy-Org stock，视觉塔全 BF16 零量化**，自带视觉塔不需要 mmproj） | `mmh3-8b-ClipProj-v3.1.safetensors` | `boogu` | 10.6 GB | staged **10,097 MB**（实测） |
-| **T2b** | 8B 破限备选（2026-09-30 新增，见 §11.11） | `qwen3-vl-8b-heretic-1.3.0_fp8_e4m3fn.safetensors`（**DreamFast Heretic v1.3.0**，语言塔同 T2，但**视觉塔 116 个张量被降到 F8_E4M3**） | `mmh3-8b-ClipProj-v3.1.safetensors` | `boogu` | 9.33 GB | staged **16,721 MB**（实测，⚠️ 超出可用显存） |
+| **T1 现状** | T2V 快档 | `qwen3-vl-4b-heretic-Q4_K_M.gguf` + `qwen3-vl-4b-heretic.mmproj-f16.gguf` | `mmh3-4b-ClipProj-v3.1.safetensors` | `krea2` | 3,179 / 3.10 | ~3.6 GB（实测） |
+| **T2** | **I2V / R2V 主力** | `qwen3vl_8b_fp8_scaled.safetensors`（**Comfy-Org stock，视觉塔全 BF16 零量化**，自带视觉塔不需要 mmproj） | `mmh3-8b-ClipProj-v3.1.safetensors` | `boogu` | 10,098 / 9.86 | staged **10,097 MB**（实测） |
+| **T2b** | 8B 破限备选（2026-09-30 新增，见 §11.11） | `qwen3-vl-8b-heretic-1.3.0_fp8_e4m3fn.safetensors`（**DreamFast Heretic v1.3.0**，语言塔同 T2，但**视觉塔 116 个张量被降到 F8_E4M3**） | `mmh3-8b-ClipProj-v3.1.safetensors` | `boogu` | 9,553 / 9.33 | staged **16,721 MB**（实测，⚠️ 超出可用显存，判据见 §3.3） |
 | ~~T3~~ | — | ~~32B~~ | — | — | — | **不上（§11.2）** |
+
+> 磁盘列统一用 **MiB / GiB（二进制）**，与显存列口径一致；文件原始字节数见 §11.2。T2 的 `10,097 MB` 恰与磁盘 MiB 同值是巧合（一个是 ComfyUI staged 显存，一个是文件大小），不代表 TE 占满显存。
+> 显存估算模型（含 staged 系数与装载判据）见 **§3**。
 
 > ⚠️ **T1 现状的 TE 文件名标 `Q4_K_M`，实测 `general.file_type=15` = **MOSTLY_Q3_K_M**，**70.8% 字节是 3-bit**（Q3_K_M 1.644 GiB + Q4_K_S 0.676 GiB）。RMSNorm 全保 F32（结构正确），但 attn 的 q/k/v/o 有 126/144 是 3-bit、ffn 90/108 是 3-bit。**升 8B fp8 顺带消除这个隐患。**
 >
@@ -620,7 +724,7 @@ TE 三件套：`qwen3vl_8b_fp8_scaled.safetensors`（clip_name，**Comfy-Org sto
 **校验证据（2026-09-30，difflib/脚本断言）**：
 - UI 12 份（op ×3 + op-8b ×3）：节点/连线数与 4B/8B 基底一致（t2v 22/23、i2v 26/31、ref2v 27/29）；`ForceUnloadBeforeDecode` ×2 全部保留（#135#136 / #145#146 / #157#158）；T2V/I2V length 已 73→124
 - 与基底 diff 仅白名单字段：生成节点 `widgets_values[0]`（prompt）+ T2V/I2V `widgets_values[3]`（length）；其余节点/连线/参数**逐字节一致**
-- 8B TE 三件套抽查通过：**`qwen3vl_8b_fp8_scaled.safetensors / boogu / mmh3-8b-ClipProj-v3.1.safetensors`**
+- 8B TE 三元组抽查通过：`CCTechClipProjLoader` 的 `clip_name= qwen3vl_8b_fp8_scaled.safetensors` / `type= boogu` / `projection= mmh3-8b-ClipProj-v3.1.safetensors`。⚠️ `boogu` 是节点 `type` 字段的**下拉枚举值，不是文件名**（4B 侧对应 `krea2`）
 - 模板 txt 与工作流内嵌 prompt **逐字一致**（6 对全 True）
 - 4B-op 与 8B-op 同一段 prompt（1449 / 1244 / 2748 字符），A/B 单变量成立
 
@@ -630,7 +734,7 @@ TE 三件套：`qwen3vl_8b_fp8_scaled.safetensors`（clip_name，**Comfy-Org sto
 
 ### 11.10 分辨率换算与耗时实测（2026-09-30 12:06 补测）
 
-> **本节全部为本机实测**，来源：`plan\t2v_8b_060_4s_result.json`（本节 11.10.4/5）、`plan\t2v_4b_vs_8b_results.json`（0.4 MP 两支）、`plan\op_gpu_mem.csv`（300 点，3 秒间隔）。未修改任何已交付工作流，参数覆盖只在内存中进行。
+> **本节全部为本机实测**，来源：`plan\t2v_8b_060_4s_result.json`（本节 11.10.4/5）、`plan\t2v_4b_vs_8b_results.json`（0.4 MP 两支）、`plan\op_gpu_mem.csv`（308 数据行，3 秒间隔，11:55:56→12:11:25，峰值 21,473 MB）。未修改任何已交付工作流，参数覆盖只在内存中进行。
 
 #### 11.10.1 megapixels → 实际分辨率换算表
 
@@ -924,7 +1028,12 @@ ab_8b_heretic_compare.json       逐帧哈希部分
 ab_8b_heretic_run.log / .err.log A/B 运行日志
 ab_metrics.log / .err.log        指标重算日志
 comfyui_restart_heretic.log / .err.log   重启后 ComfyUI 日志（staged 行出处）
-bat\dl_8b_heretic.log / .err.log          aria2 下载日志
+dl_8b_heretic.log / .err.log     aria2 下载日志
+
+（以上 12 个 *.log 已于 2026-10-02 统一移入 plan\归档\日志\，
+  相对路径清单见 plan\归档\日志\来源清单.md；文件内容与时间戳未改。
+  注意：本文早前写的 bat\dl_8b_heretic.log 当时就是失效路径，
+  实际位置为 bat\归档\dl_8b_heretic.log，现统一为 归档\日志\。）
 ```
 
 **校验结论**：
@@ -952,3 +1061,62 @@ bat\dl_8b_heretic.log / .err.log          aria2 下载日志
 - 8B GGUF 备选（含 `mmproj-Qwen3VL-8B-Instruct-F16.gguf`，官方非去审查）：`huggingface.co/Qwen/Qwen3-VL-8B-Instruct-GGUF`
 - ComfyUI 原生 H3 编码器路径（无需自定义节点）：`comfy/sd.py:1674` `detect_te_model`、`:1924-1926` `QWEN3VL_32B → text_encoders.minimax.te`、`comfy/text_encoders/minimax.py`（三段拼接规则 / adaLN tag 0-1）
 - AMD Navi31 上 sage 比 PyTorch SDPA 慢 30–34%（故 §10.6 否决 `--use-sage-attention`）：AMD ROCm / Ryzen AI 官方性能文档
+
+---
+
+## 12. ⚠️ `--use-ck-attention` 兼容性回归（2026-10-01 定案：按模型分启动脚本）
+
+> 完整证据链见本目录 `CK注意力回归问题调查报告.md`（336 行，含 5 组 flag 对照、token 长度二分、源码定位、版本溯源、证据文件清单）。本节只记**结论与处置**。
+
+### 12.1 一句话结论
+
+`--use-ck-attention` 的 2.70x 加速**不是无条件安全的**：comfy-kitchen **0.2.36** 的 masked attention 重写（#207/#208）在 **token 数跨过 64** 时输出崩坏，**Qwen-Image 2.1 已确认中招**；H3 文本侧安全，**H3 DiT 主干待验证**。
+
+### 12.2 机理与边界（为什么是 64）
+
+`64` 是 **HIP 注意力核的 tile 宽度**（`comfy_kitchen/sage_attention.py` L21 `CTA_K = 64`；`backends/hip/__init__.py:2824` `_SAGE_CTA_K = 64`），在 `_prepare_attn_mask` 里 `≤64` 与 `>64` 走**完全不同的代码路径**：
+
+| 存活 token | 走哪条路径 | Qwen-Image 2.1 实测 |
+|---|---|---|
+| 64（T78，69 CJK 字） | 原样返回 mask，不预处理 | ✅ 正常 |
+| 68（T82，74 CJK 字） | 打包 dense mask / key mask | ❌ 崩坏 |
+
+**⚠️ 极易误诊**：早期「74 个中文字上限」是核内 block size 的伪像，不是模型限制。任何「长度上限」症状，**先查启动 flag**。
+
+### 12.3 对本项目的影响面（已逐路径核实）
+
+| 部件 | 是否走 ck | 结论 |
+|---|---|---|
+| H3 文本编码器 Qwen3-VL | **否** | `qwen_vl.py:418` 传 `small_input=True`，`attention.py` 函数最开头即 `return attention_basic`，永远到不了 ck 分支；且不传 mask（用 `cu_seqlens` 变长拼接）→ **任何模型的文本编码器都不受此 bug 影响** |
+| H3 DiT 主干 `ldm/minimax/model.py` | **是** | 2.70x 加速的来源；其带状 mask（`[1,1,1,K]`）**确实命中** #207/#208 重写路径 → **未验证风险** |
+| H3 VAE `ldm/minimax/vae.py:313` | 是 | 仅 int8 量化权重时走 ck |
+| Qwen-Image 2.1 主干 | **是** | **已确认崩坏**（绿/紫伪影、纹理破碎、结构崩坏，且**无任何异常抛出**） |
+
+**关键疑点**：H3 同条件 ck vs 非-ck 相关系数 **0.99786**、平均像素差 2.33/255，**这不是噪声**——H3 生成是**位级确定**的（同 TE 复跑 124/124 帧 sha256 一致、SSIM = 1.000000、PSNR = inf，噪声地板为零）。即 ck **确实改变了 H3 输出**；差异集中在细节（锐度 +4.05%、平坦区噪声 −5%）而非整体加噪，量级远小于 Qwen 的崩坏，但**是预期行为还是同一缺陷的轻微表现，目前无法判定**。
+
+### 12.4 处置：按模型切换启动脚本
+
+| 用途 | 启动脚本 |
+|---|---|
+| **MiniMax H3** | `run_amd_gpu_enable_dynamic_vram.bat`（保留 `--use-ck-attention`，2.70x 加速） |
+| **Qwen-Image 2.1** | `run_amd_gpu_no_ck_attention.bat`（去掉 `--use-ck-attention`） |
+
+两脚本**除 ck 开关外逐字一致**，保证 A/B 可比：
+
+```bat
+:: run_amd_gpu_no_ck_attention.bat
+%PYTHON% -s %TARGET% --windows-standalone-build --enable-dynamic-vram --disable-pinned-memory --disable-smart-memory --reserve-vram 6 --disable-api-nodes --cache-none --fp16-intermediates
+```
+
+### 12.5 已排除的规避手段（实测无效，不必重复尝试）
+
+`--fp16-intermediates`（无关）· `--force-upcast-attention`（无关）· `ModelSamplingAuraFlow(shift=3.1)`（对齐官方 blueprint 仍损坏）· 提高 cfg（4.0 仍损坏）· 缩短 prompt 到 ≤64 存活 token（可行但边界是核参数、限制创作）
+
+### 12.6 待办
+
+1. **一次 H3 ck / 非-ck 对照**确认 DiT 主干可信度（§12.3 疑点）
+2. 关注上游 issue [Comfy-Org/comfy-kitchen#226](https://github.com/Comfy-Org/comfy-kitchen/issues/226)（open）
+3. 升级 comfy-kitchen 后**必须重跑** §12.2 的 token 边界二分（0.2.36 之后仅 #214 修了 NaN，0.2.37 不存在）
+4. 若 #226 长期无响应，考虑把「64 tile 宽度」的精确定位数据补给上游
+
+> **换机提醒**：`--use-ck-attention` 有 `comfy_kitchen` 缺失即 `exit(-1)` 拒启的硬失败（`attention.py:918`），且必须 HIP 后端 int8 kernel 可用（§10.6 的验证脚本可复用）。

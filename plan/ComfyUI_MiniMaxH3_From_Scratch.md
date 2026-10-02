@@ -90,7 +90,7 @@ python_embeded\python.exe -m pip install opencv-python-headless -i https://mirro
 | 文件 | 大小 | 目标目录 | 来源 |
 |---|---|---|---|
 | `minimax_h3_fl2va_pruned-Q4_K_M.gguf` | 10.64GB | `models\diffusion_models\` | `hf-mirror.com/molbal/MiniMax-H3-GGUF`（旧版命名；官方现名 fp8_Q4_0，见排雷 R7） |
-| `ref2va_pruned-Q4_K_M.gguf` | ~10.6GB | `models\diffusion_models\` | 同上 |
+| `minimax_h3_ref2va_pruned-Q4_K_M.gguf` | ~10.6GB | `models\diffusion_models\` | 同上 |
 | `qwen3-vl-4b-heretic-Q4_K_M.gguf` | ~2.3GB | `models\text_encoders\` | `hf-mirror.com/matrixportalx/Qwen3-VL-4B-Instruct-heretic-Q4_K_M-GGUF` |
 | `qwen3-vl-4b-heretic.mmproj-f16.gguf` | 836MB | `models\text_encoders\` | `hf-mirror.com/mradermacher/Qwen3-VL-4B-Instruct-heretic-GGUF`（matrixportalx 版无 mmproj，**必须 mradermacher**） |
 | `mmh3-4b-ClipProj-v3.1.safetensors` | 25.0MB | `models\clip_projections\` | `hf-mirror.com/NicoLab28/ClipProj-MiniMax-H3` |
@@ -143,7 +143,7 @@ t2v / i2v / ref2v 模板（改编成品见本仓库 `plan\molbal_workflows\final
 
 ## 6. 启动脚本（主力 dynamic VRAM 版）
 
-`run_amd_gpu_enable_dynamic_vram.bat`（**日常启动 / 主力**；`--enable-dynamic-vram` 在 ROCm <7.14 需手动开启，官方 7.14+ 才默认启用，本机 ROCm 7.2.1 必须加）：
+`run_amd_gpu_enable_dynamic_vram.bat`（**日常启动 / 主力（MiniMax H3）**；`--enable-dynamic-vram` 在 ROCm <7.14 需手动开启，官方 7.14+ 才默认启用，本机 ROCm 7.2.1 必须加）：
 
 ```bat
 @echo off
@@ -153,6 +153,12 @@ set TARGET=ComfyUI\main.py
 
 %PYTHON% -s %TARGET% --windows-standalone-build --enable-dynamic-vram --disable-pinned-memory --fp16-intermediates --disable-smart-memory --reserve-vram 6 --disable-api-nodes --cache-none --use-ck-attention
 pause
+```
+
+`run_amd_gpu_no_ck_attention.bat`（**Qwen-Image 2.1 用**——去掉 `--use-ck-attention`，其余逐字一致以保证 A/B 可比）：
+
+```bat
+%PYTHON% -s %TARGET% --windows-standalone-build --enable-dynamic-vram --disable-pinned-memory --disable-smart-memory --reserve-vram 6 --disable-api-nodes --cache-none --fp16-intermediates
 ```
 
 关键参数的实测意义：
@@ -165,9 +171,9 @@ pause
 - `--reserve-vram 6`：预留 6GB 显存给 OS/桌面软件，避免生成期切桌面卡顿/驱动超时
 - `--disable-api-nodes`：不加载 API 节点 + 前端不联网；`/prompt` 提交不受影响
 - `--cache-none`：不缓存节点执行结果（每次运行全部节点重算），降 RAM/VRAM 占用，代价是重复执行
-- `--use-ck-attention`：Comfy Kitchen attention（int8 内核，`comfy_kitchen` 0.2.36，HIP 后端实测可用；缺失或 kernel 不支持时**直接 exit(-1) 拒启**）
+- `--use-ck-attention`：Comfy Kitchen attention（int8 内核，`comfy_kitchen` 0.2.36，HIP 后端实测可用）。实测采样 **2.70x** 加速、峰值显存反降 0.40 GiB。⚠️ **双重风险**：(1) 缺失或 kernel 不支持时**直接 `exit(-1)` 拒启**（`attention.py:918`）；(2) ⚠️⚠️ **0.2.36 存在正确性回归**——存活 token 跨过 **64**（HIP 核 tile 宽度）时输出崩坏，**Qwen-Image 2.1 已确认**（绿/紫伪影且无异常抛出）。H3 文本编码器不受影响（`small_input=True` 提前返回 `attention_basic`），**H3 DiT 主干待验证**。详见 `CK注意力回归问题调查报告.md` + `Plan.md §12`
 
-就记住：**不要上 `--lowvram/--novram`**（会主动把权重卸到系统内存，徒增 swap 风险）；**不要 `--use-sage-attention`**（AMD 无支持 + H3 全局 sage 出纯噪声）。
+就记住：**不要上 `--lowvram/--novram`**（会主动把权重卸到系统内存，徒增 swap 风险）；**不要 `--use-sage-attention`**（AMD 无支持 + H3 全局 sage 出纯噪声）；**Qwen-Image 不要用带 ck 的脚本**。
 
 `run_amd_gpu.bat`（**已弃用**，仅保留 `.bak` 作对照）：早期不带 dynamic VRAM 的版本，参数仅 `--disable-pinned-memory --fp16-intermediates`，勿再日常使用。
 
@@ -175,11 +181,12 @@ pause
 
 ## 7. 冒烟验收顺序
 
-1. **T2V**：fl2va + 5s + 12 步 + cfg 1.0 + 480p，先跑通。预期全程恒定 ~26.6s/it，总耗时约 9–10 分钟。
+1. **T2V**：fl2va + 5s + 12 步 + cfg 1.0 + 480p，先跑通。⚠️ 耗时基准已被 ck-attention 与 TE 档位改写，别用旧的 ~26.6s/it：4B 无 ck 时代 5s/20 步 ≈ 9.5min；**8B + ck 实测 0.40MP/5s = 450s（≈7.5min）**，采样 39.26 s/it（ck 开启前 106.0 s/it）——完整矩阵见 `Plan.md §11.10` 与仓库 `README.md §一`
 2. **I2V**：加首帧，验证 GGUF 编码器 + mmproj 视觉路径（失败则换 bf16 编码器，见排雷 R6）。
 3. **R2V**：ref2va + 参考图/视频/音频。
 4. 全程任务管理器观察：GPU 显存三段低峰，系统「已提交内存」不趋近上限（无 swap 迹象）。
-5. 参考基准：5s 一轮 ≈ 9.5 分钟（采样 8:47 + 解码 ~30s）；10s / 20 步 / 长提示词 ≈ 40–45 分钟。
+5. 换机前置检查：跑 `python vram_model.py` 过装载判据（`Plan.md §3.6`）；确认 `comfy-kitchen` 已装且 HIP int8 kernel 可用（`python -c "from comfy_kitchen import int8_attention_is_available; print(int8_attention_is_available())"` 应为 `True`），否则带 ck 的脚本会 `exit(-1)`。
+6. ⚠️ **core 版本**：本文件早期所有验证基于 **v0.34.0**，实机现已升级到 **v0.38.0**（`fb2315f1`，2026-09-29）。要复现本文件结论就 checkout 0.34.0；跟实机一致就用 0.38.0 并复核。
 
 ---
 

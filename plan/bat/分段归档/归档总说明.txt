@@ -1,0 +1,29 @@
+==========================================================================
+H3 4B 分段生成归档  (2026-10-02 11:10 - 12:40)
+==========================================================================
+
+来源: ComfyUI output\video\MiniMax_H3_00199_ .. 00210_
+      （原脚本把分段下载到 %TEMP%\h3_*\，那些临时目录已被清理，
+        此处从 ComfyUI 侧原始产物还原，未重新生成）
+
+尾帧重建命令与脚本内完全一致:
+  ffmpeg -y -sseof -0.1 -i <seg.mp4> -frames:v 1 <tail.png>
+
+脚本           段数     每段帧数                     seed
+--------------------------------------------------------------------------
+multisegment 3      124 帧                    2288190560938289565
+             t2v 起始 + 首帧续接。共 3 段 x 5s / 124 帧，拼接成片 370 帧 15.50s。
+             成片: D:\localAI\ComfyUI-last\plan\bat\multisegment\h3_multisegment_2288190560938289565.mp4
+
+ref2va       3      124 帧                    7617762656070752285
+             ref2va 双图参考（<Picture 1>=1_女孩.png, <Picture 2>=2_男孩.png）+ 首帧续接。
+             成片: D:\localAI\ComfyUI-last\plan\bat\ref2va\h3_ref2va_7617762656070752285.mp4
+
+scenes       3      107 帧                    1420618155338671637
+             分镜 3 块 x 4s / 107 帧：块1 t2va 起始，块2-3 fl2va 首帧续接。
+             成片: D:\localAI\ComfyUI-last\plan\bat\scenes\h3_scenes_1420618155338671637.mp4
+
+scenes_ref   3      107 帧                    5105905812306259215
+             分镜 3 块 x 4s / 107 帧：块1 ref2va 参考生成，块2-3 fl2va 首帧续接。
+             成片: D:\localAI\ComfyUI-last\plan\bat\scenes_ref\h3_scenes_ref_5105905812306259215.mp4
+

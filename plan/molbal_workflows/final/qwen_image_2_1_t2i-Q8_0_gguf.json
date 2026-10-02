@@ -188,7 +188,7 @@
         "euler",
         "simple",
         447606998181262,
-        "qwen-image-2.1-UC-Q4_K_M.gguf",
+        "qwen-image-2.1-UC-Q8_0.gguf",
         "qwen3vl_8b_int8_convrot.safetensors",
         "qwen_image_2.1_vae_bf16.safetensors",
         "qwen3.5_9b_qwen_image_2.1_pe_t2i.int8_convrot.safetensors",
@@ -654,10 +654,10 @@
               ]
             },
             "widgets_values": [
-              "qwen-image-2.1-UC-Q4_K_M.gguf"
+              "qwen-image-2.1-UC-Q8_0.gguf"
             ],
             "widgets_values_named": {
-              "unet_name": "qwen-image-2.1-UC-Q4_K_M.gguf"
+              "unet_name": "qwen-image-2.1-UC-Q8_0.gguf"
             }
           },
           {
