@@ -171,7 +171,7 @@ pause
 - `--reserve-vram 6`：预留 6GB 显存给 OS/桌面软件，避免生成期切桌面卡顿/驱动超时
 - `--disable-api-nodes`：不加载 API 节点 + 前端不联网；`/prompt` 提交不受影响
 - `--cache-none`：不缓存节点执行结果（每次运行全部节点重算），降 RAM/VRAM 占用，代价是重复执行
-- `--use-ck-attention`：Comfy Kitchen attention（int8 内核，`comfy_kitchen` 0.2.36，HIP 后端实测可用）。实测采样 **2.70x** 加速、峰值显存反降 0.40 GiB。⚠️ **双重风险**：(1) 缺失或 kernel 不支持时**直接 `exit(-1)` 拒启**（`attention.py:918`）；(2) ⚠️⚠️ **0.2.36 存在正确性回归**——存活 token 跨过 **64**（HIP 核 tile 宽度）时输出崩坏，**Qwen-Image 2.1 已确认**（绿/紫伪影且无异常抛出）。H3 文本编码器不受影响（`small_input=True` 提前返回 `attention_basic`），**H3 DiT 主干待验证**。详见 `CK注意力回归问题调查报告.md` + `Plan.md §12`
+- `--use-ck-attention`：Comfy Kitchen attention（int8 内核，`comfy_kitchen` 0.2.36，HIP 后端实测可用）。实测采样 **2.70x** 加速（总耗时口径 2.02x）、峰值显存反降 0.40 GiB。⚠️ **双重风险**：(1) 缺失或 kernel 不支持时**直接 `exit(-1)` 拒启**（`attention.py:918`）；(2) ⚠️⚠️ **0.2.36 存在正确性回归**——存活 token 跨过 **64**（HIP 核 tile 宽度）时输出崩坏，**Qwen-Image 2.1 已确认**（绿/紫伪影且无异常抛出），**必须改用 `run_amd_gpu_no_ck_attention.bat`**。H3 文本编码器不受影响（`small_input=True` 提前返回 `attention_basic`），**H3 DiT 主干已于 2026-10-02 实测确认安全**（124 帧 SSIM 0.98849、四路判据全排除崩坏、锐度 +5.50%）。详见 `CK注意力回归问题调查报告.md` + `ck_ab_20261002\` + `Plan.md §12`
 
 就记住：**不要上 `--lowvram/--novram`**（会主动把权重卸到系统内存，徒增 swap 风险）；**不要 `--use-sage-attention`**（AMD 无支持 + H3 全局 sage 出纯噪声）；**Qwen-Image 不要用带 ck 的脚本**。
 

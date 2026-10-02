@@ -4,3 +4,6 @@ plan/TEMP/
 # Python 字节码缓存（py_compile 语法校验会产生）
 __pycache__/
 *.pyc
+
+# Playwright MCP 工具产物（识图流程的页面快照 / console 日志）
+.playwright-mcp/

@@ -1,6 +1,6 @@
 # plan 目录索引
 
-MiniMax H3 本机部署与实测的**全部资产地图**。199 个文件 / 45.67 MB（2026-10-02 整理后）。
+MiniMax H3 本机部署与实测的**全部资产地图**。**292 个文件 / 34.96 MB**（2026-10-02 重数，含新增 `ck_ab_20261002\` 32 文件 / 6.61 MB；口径 = `Get-ChildItem -Recurse -File` 全量递归）。
 本文件是导航层；整理动作只做了归档、删字节码、修注释、补交付层、建显存估算模型，详见 §6。
 
 ---
@@ -40,6 +40,8 @@ MiniMax H3 本机部署与实测的**全部资产地图**。199 个文件 / 45.6
 | `T2V_4B_vs_8B_对比报告.md` (约 30 KB / 433 行) | 4B vs 8B 主报告。§3.1 混淆变量、§9 0.60 MP 补测、§10 破限 A/B |
 | `ComfyUI_MiniMaxH3_From_Scratch.md` (约 12 KB / 212 行) | 从零构建说明（模型清单、目录、启动参数） |
 | `vision_qc_识图结论.md` (约 10 KB / 152 行) | 识图判定结论（0.40 MP 不糊 / 几何细节提升真实 / 4B-8B 无法排名） |
+| `CK注意力回归问题调查报告.md` (约 336 行) | ⚠️ `--use-ck-attention` 回归证据链（**Qwen-Image 侧**：5 组 flag 对照 / token 64 边界二分 / 源码定位 / 版本溯源），对应 `Plan.md §12` |
+| `ck_ab_20261002\` (入库 16 文件 / 171 KB) | ✅ **H3 侧 ck / 非-ck 受控 A/B**（2026-10-02）。结论：**H3 DiT 走 ck 安全**，端到端 1.54x。入库内容 = 本目录 `README.md` + 主报告 + 2 个脚本 + 10 份 json（2 份运行清单组共 5 份 + 5 份指标）。**实机另有 32 文件 / 6.61 MB**，多出的是可视化 PNG / mp4 / 启动日志，不入库。对应 `Plan.md §12.3` / `§12.6` 待办 1（已关闭） |
 | `API_workflows\H3工作流适配计划.md` (约 9 KB / 157 行) | API 格式工作流适配方案 |
 | `bat\提示词模板\MiniMax-H3-提示词书写规则.md` (约 19 KB / 330 行) | **提示词书写规则**（三字段信封 / `[Shot N]` 时间线 / 摄影机运动词表 / 帧栅格 / R2V 六段） |
 | `API_workflows\final\README.md` | API 交付层的来源与三套 TE 对照 |
@@ -59,6 +61,7 @@ MiniMax H3 本机部署与实测的**全部资产地图**。199 个文件 / 45.6
 | `molbal_workflows\final\*.json.pre-q8fix.bak` | 3 份 Q8_0 修复前快照 |
 | `molbal_workflows\bak noerror 0/1/2`、`bak RAW` | 4 套调试期快照（15 个文件） |
 | `API_workflows\{Calliope,go,omy}\bak *` | API 格式调试期快照（31 个文件）。⚠️ `omy\` 的主目录内容已进交付层 `API_workflows\final\4b\`，但 `bak 01\` 仍原样保留 |
+| `*.pre-ck-ab-20261002.bak`（3 份） | ck A/B 结论回写**之前**的实机文档快照：`ComfyUI_MiniMaxH3_AMD_7900XTX_Plan.md` / `ComfyUI_MiniMaxH3_From_Scratch.md` / `README.md`。同批把 `CK注意力回归问题调查报告.md` 首次补进实机（此前只在仓库） |
 
 ---
 
@@ -197,26 +200,29 @@ T1 `3.11 GB`→`3,179 MiB / 3.10 GiB`、T2 `10.6 GB`→`10,098 MiB / 9.86 GiB`�
 
 > 全部**未动**，仅登记。需要动时先确认，因为工作流与脚本的字节和时间戳是回滚锚点。
 
-### 7.1 体积大头：生成产物落在 plan 内（6 个 mp4 = 35.1 MB，占全目录 77%）
+### 7.1 体积大头：生成产物落在 plan 内（现状 19 个 mp4 = 8.22 MB，占全目录 23.6%）
 
-| 文件 | 大小 | 说明 |
+> ⚠️ 本节原表所列 `h3_multisegment_2_3456x1920.mp4`（21.0 MB）等 4 个大文件**已在 §6.1 归档时移出 plan，现已不存在**，整表于 2026-10-02 按实测重记。
+
+| 位置 | 数量 / 体积 | 说明 |
 |---|---|---|
-| `h3_multisegment_2_3456x1920.mp4` | 21.0 MB | 应在 `ComfyUI\output\` |
-| `h3_multisegment_2_1728x960.mp4` | 10.4 MB | 同上 |
-| `h3_multisegment_1.mp4` / `h3_multisegment_2.mp4` | 1.8 MB each | 同上 |
-| `seg0.mp4` | 568 KB | 分段中间产物 |
-| `bat\scenes\h3_scenes_4745687172311705797.mp4` | 1.1 MB | 脚本目录里的产物 |
+| `bat\分段归档\{multisegment,ref2va,scenes,scenes_ref}\` | 12 个 / 3.80 MB | 分段中间产物，每族 3 个（含 `seg0.mp4`） |
+| `bat\{multisegment,scenes,scenes_ref,ref2va,scenes_ref_8b_heretic}\` | 5 个 / 3.97 MB | 各脚本目录里的单段成品 |
+| `ck_ab_20261002\` | 2 个 / 0.46 MB | `selftest_same.mp4` / `selftest_perturbed.mp4`（比对工具的自检样本） |
+| **合计** | **19 个 / 8.22 MB** | 占 plan 全目录 **23.6%**（plan 总计 287 文件 / 34.81 MB） |
+
+`plan\` 根目录**已无散落 mp4**（§6.1 归档后状态），产物只存在于上述三个脚本族目录内。
 
 ### 7.2 结构不一致
 
 | 项 | 问题 |
 |---|---|
-| `bak\`（plan 根） | `gen_h3_multisegment.py` 与 `bat\multisegment\gen_h3_multisegment.py` 同名不同版（13.7 KB vs 16.0 KB），易误用；`gen_video_ask.*` 已无对应目录 |
-| `API_workflows\{Calliope,go}\bak *` | 命名不统一：`bak 04  OK`（双空格）/ `bak 05 OK` / `bak 04`；`bak 04` 与 `bak 05 OK` 文件重叠 |
+| `bak\`（plan 根） | `gen_h3_multisegment.py` 与 `bat\multisegment\gen_h3_multisegment.py` 同名不同版（13.4 KB vs 15.6 KB），易误用；`gen_video_ask.*` 已无对应目录（现已退场归入本目录，勿取用，见 §8 硬规矩） |
+| `API_workflows\{Calliope,go,omy}\bak *` | 命名不统一：`bak 04  OK`（双空格）/ `bak 05 OK` / `bak 04`；`bak 04` 与 `bak 05 OK` 文件重叠。另 `omy\` 只有 `bak 01`，与另两族步数不齐 |
 | `molbal_workflows\final\4b\op\` | 比同级的 `final\op-8b\` 深一层。⚠️ `API_workflows\final\` **刻意沿用了同样的深一层**，以保证两种格式层级可对照 |
-| `final\提示词模板在bat里.txt` | 0 字节占位指针 |
-| `提示词模板-视频.txt` | 在 `bat\` 与 `final\` 双份（`final\` 那份是 0 字节指针，非重复内容） |
-| `gen_h3_{multisegment,scenes}*.py` **共 4 份** | 注释仍写 `molbal_workflows/test`，该目录**不存在**（正确为 `final\4b\` / `final\4b\op\`）。本次只修了点名的 2 份 8B 脚本，另 4 份未授权故未动 |
+| `final\提示词模板在bat里.txt` | 0 字节占位指针（仍存在） |
+| ~~`提示词模板-视频.txt` 在 `bat\` 与 `final\` 双份~~ | ✅ **已解决**：唯一实体已归 `bat\提示词模板\提示词模板-视频.txt`（4053 字节），`final\` 侧只剩 0 字节指针文件 `提示词模板在bat里.txt` |
+| 仍指向 `molbal_workflows/test` 的脚本 **5 份** | §6.2 只修了点名的 2 份 8B 脚本。仍为失效路径（正确应为 `final\4b\` / `final\4b\op\`）的 5 份：`bak\gen_h3_multisegment.py`、`bat\multisegment\gen_h3_multisegment.py`、`bat\scenes\gen_h3_scenes.py`、`bat\scenes_8b\gen_h3_scenes-8b.py`、`bat\scenes_8b_heretic\gen_h3_scenes-8b-heretic.py`。**仅注释，不影响运行**；按 §8 硬规矩未授权故未动 |
 
 ---
 

@@ -1,0 +1,654 @@
+{
+  "tag": "nock_full",
+  "prompt_id": "ae78787c-49c0-487c-9492-8694637bf6b0",
+  "seed": 1234,
+  "steps": 20,
+  "size": [
+    864,
+    480
+  ],
+  "length": 124,
+  "duration": 5.0,
+  "sampler": "res_multistep",
+  "scheduler": "simple",
+  "prompt_sha256": "fde6c1d75dd5c433cbf2f633122daea543689ffdfc7df391822073d51e116315",
+  "elapsed_sec": 633.4,
+  "outputs": {
+    "17": {
+      "images": [
+        {
+          "filename": "nock_full_00001_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00002_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00003_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00004_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00005_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00006_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00007_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00008_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00009_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00010_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00011_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00012_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00013_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00014_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00015_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00016_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00017_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00018_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00019_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00020_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00021_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00022_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00023_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00024_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00025_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00026_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00027_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00028_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00029_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00030_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00031_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00032_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00033_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00034_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00035_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00036_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00037_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00038_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00039_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00040_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00041_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00042_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00043_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00044_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00045_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00046_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00047_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00048_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00049_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00050_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00051_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00052_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00053_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00054_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00055_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00056_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00057_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00058_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00059_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00060_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00061_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00062_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00063_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00064_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00065_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00066_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00067_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00068_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00069_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00070_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00071_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00072_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00073_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00074_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00075_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00076_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00077_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00078_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00079_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00080_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00081_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00082_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00083_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00084_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00085_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00086_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00087_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00088_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00089_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00090_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00091_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00092_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00093_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00094_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00095_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00096_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00097_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00098_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00099_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00100_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00101_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00102_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00103_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00104_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00105_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00106_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00107_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00108_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00109_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00110_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00111_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00112_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00113_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00114_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00115_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00116_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00117_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00118_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00119_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00120_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00121_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00122_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00123_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "nock_full_00124_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        }
+      ]
+    },
+    "16": {
+      "images": [
+        {
+          "filename": "nock_full_video_00001_.mp4",
+          "subfolder": "ck_ab",
+          "type": "output"
+        }
+      ],
+      "animated": [
+        true
+      ]
+    }
+  }
+}

@@ -1,0 +1,229 @@
+{
+  "tag": "ck_r1",
+  "prompt_id": "a433ff28-5f58-4347-a9f8-023e247928dd",
+  "seed": 1234,
+  "steps": 4,
+  "size": [
+    864,
+    480
+  ],
+  "length": 39,
+  "duration": 1.0,
+  "sampler": "res_multistep",
+  "scheduler": "simple",
+  "prompt_sha256": "fde6c1d75dd5c433cbf2f633122daea543689ffdfc7df391822073d51e116315",
+  "elapsed_sec": 117.4,
+  "outputs": {
+    "17": {
+      "images": [
+        {
+          "filename": "ck_r1_00001_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "ck_r1_00002_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "ck_r1_00003_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "ck_r1_00004_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "ck_r1_00005_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "ck_r1_00006_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "ck_r1_00007_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "ck_r1_00008_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "ck_r1_00009_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "ck_r1_00010_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "ck_r1_00011_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "ck_r1_00012_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "ck_r1_00013_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "ck_r1_00014_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "ck_r1_00015_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "ck_r1_00016_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "ck_r1_00017_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "ck_r1_00018_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "ck_r1_00019_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "ck_r1_00020_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "ck_r1_00021_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "ck_r1_00022_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "ck_r1_00023_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "ck_r1_00024_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "ck_r1_00025_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "ck_r1_00026_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "ck_r1_00027_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "ck_r1_00028_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "ck_r1_00029_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "ck_r1_00030_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "ck_r1_00031_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "ck_r1_00032_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "ck_r1_00033_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "ck_r1_00034_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "ck_r1_00035_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "ck_r1_00036_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "ck_r1_00037_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "ck_r1_00038_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        },
+        {
+          "filename": "ck_r1_00039_.png",
+          "subfolder": "ck_ab",
+          "type": "output"
+        }
+      ]
+    },
+    "16": {
+      "images": [
+        {
+          "filename": "ck_r1_video_00001_.mp4",
+          "subfolder": "ck_ab",
+          "type": "output"
+        }
+      ],
+      "animated": [
+        true
+      ]
+    }
+  }
+}

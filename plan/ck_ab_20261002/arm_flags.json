@@ -1,0 +1,14 @@
+[
+  {
+    "arm": "A_ck",
+    "pid": 27344,
+    "ck": true,
+    "flags": "--windows-standalone-build --enable-dynamic-vram --disable-pinned-memory --fp16-intermediates --disable-smart-memory --reserve-vram --disable-api-nodes --cache-none --use-ck-attention"
+  },
+  {
+    "arm": "B_nock",
+    "pid": 24888,
+    "ck": false,
+    "flags": "--windows-standalone-build --enable-dynamic-vram --disable-pinned-memory --disable-smart-memory --reserve-vram --disable-api-nodes --cache-none --fp16-intermediates"
+  }
+]

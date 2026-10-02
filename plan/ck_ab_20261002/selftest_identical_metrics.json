@@ -1,0 +1,1090 @@
+{
+  "tag": "selftest_identical",
+  "a": "D:\\localAI\\ComfyUI-last\\plan\\ck_ab_20261002\\selftest_same.mp4",
+  "b": "D:\\localAI\\ComfyUI-last\\plan\\ck_ab_20261002\\selftest_same.mp4",
+  "frames_compared": 107,
+  "frames_sha_equal": 107,
+  "bit_identical": true,
+  "mad_mean": 0.0,
+  "mad_max": 0.0,
+  "pearson_r_min": 1.0,
+  "pearson_r_mean": 1.0,
+  "ssim_min": 1.0,
+  "ssim_mean": 1.0,
+  "sharp_a_mean": 97.379,
+  "sharp_b_mean": 97.379,
+  "sharp_delta_pct": 0.0,
+  "worst_frame": 1,
+  "per_frame": [
+    {
+      "frame": 1,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 100.781,
+      "sharp_b": 100.781
+    },
+    {
+      "frame": 2,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 98.769,
+      "sharp_b": 98.769
+    },
+    {
+      "frame": 3,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 99.229,
+      "sharp_b": 99.229
+    },
+    {
+      "frame": 4,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 98.509,
+      "sharp_b": 98.509
+    },
+    {
+      "frame": 5,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 102.095,
+      "sharp_b": 102.095
+    },
+    {
+      "frame": 6,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 97.883,
+      "sharp_b": 97.883
+    },
+    {
+      "frame": 7,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 99.305,
+      "sharp_b": 99.305
+    },
+    {
+      "frame": 8,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 99.269,
+      "sharp_b": 99.269
+    },
+    {
+      "frame": 9,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 102.45,
+      "sharp_b": 102.45
+    },
+    {
+      "frame": 10,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 97.032,
+      "sharp_b": 97.032
+    },
+    {
+      "frame": 11,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 98.093,
+      "sharp_b": 98.093
+    },
+    {
+      "frame": 12,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 97.551,
+      "sharp_b": 97.551
+    },
+    {
+      "frame": 13,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 100.898,
+      "sharp_b": 100.898
+    },
+    {
+      "frame": 14,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 95.635,
+      "sharp_b": 95.635
+    },
+    {
+      "frame": 15,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 95.465,
+      "sharp_b": 95.465
+    },
+    {
+      "frame": 16,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 94.368,
+      "sharp_b": 94.368
+    },
+    {
+      "frame": 17,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 98.712,
+      "sharp_b": 98.712
+    },
+    {
+      "frame": 18,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 94.97,
+      "sharp_b": 94.97
+    },
+    {
+      "frame": 19,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 94.51,
+      "sharp_b": 94.51
+    },
+    {
+      "frame": 20,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 94.097,
+      "sharp_b": 94.097
+    },
+    {
+      "frame": 21,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 98.239,
+      "sharp_b": 98.239
+    },
+    {
+      "frame": 22,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 95.869,
+      "sharp_b": 95.869
+    },
+    {
+      "frame": 23,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 96.452,
+      "sharp_b": 96.452
+    },
+    {
+      "frame": 24,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 96.875,
+      "sharp_b": 96.875
+    },
+    {
+      "frame": 25,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 100.044,
+      "sharp_b": 100.044
+    },
+    {
+      "frame": 26,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 96.903,
+      "sharp_b": 96.903
+    },
+    {
+      "frame": 27,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 97.063,
+      "sharp_b": 97.063
+    },
+    {
+      "frame": 28,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 97.217,
+      "sharp_b": 97.217
+    },
+    {
+      "frame": 29,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 99.093,
+      "sharp_b": 99.093
+    },
+    {
+      "frame": 30,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 95.641,
+      "sharp_b": 95.641
+    },
+    {
+      "frame": 31,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 95.663,
+      "sharp_b": 95.663
+    },
+    {
+      "frame": 32,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 96.291,
+      "sharp_b": 96.291
+    },
+    {
+      "frame": 33,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 98.134,
+      "sharp_b": 98.134
+    },
+    {
+      "frame": 34,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 94.524,
+      "sharp_b": 94.524
+    },
+    {
+      "frame": 35,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 94.834,
+      "sharp_b": 94.834
+    },
+    {
+      "frame": 36,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 95.55,
+      "sharp_b": 95.55
+    },
+    {
+      "frame": 37,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 98.29,
+      "sharp_b": 98.29
+    },
+    {
+      "frame": 38,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 96.848,
+      "sharp_b": 96.848
+    },
+    {
+      "frame": 39,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 97.271,
+      "sharp_b": 97.271
+    },
+    {
+      "frame": 40,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 98.569,
+      "sharp_b": 98.569
+    },
+    {
+      "frame": 41,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 100.837,
+      "sharp_b": 100.837
+    },
+    {
+      "frame": 42,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 99.233,
+      "sharp_b": 99.233
+    },
+    {
+      "frame": 43,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 99.364,
+      "sharp_b": 99.364
+    },
+    {
+      "frame": 44,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 98.42,
+      "sharp_b": 98.42
+    },
+    {
+      "frame": 45,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 100.01,
+      "sharp_b": 100.01
+    },
+    {
+      "frame": 46,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 98.832,
+      "sharp_b": 98.832
+    },
+    {
+      "frame": 47,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 98.552,
+      "sharp_b": 98.552
+    },
+    {
+      "frame": 48,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 98.828,
+      "sharp_b": 98.828
+    },
+    {
+      "frame": 49,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 99.907,
+      "sharp_b": 99.907
+    },
+    {
+      "frame": 50,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 98.666,
+      "sharp_b": 98.666
+    },
+    {
+      "frame": 51,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 98.364,
+      "sharp_b": 98.364
+    },
+    {
+      "frame": 52,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 98.722,
+      "sharp_b": 98.722
+    },
+    {
+      "frame": 53,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 99.706,
+      "sharp_b": 99.706
+    },
+    {
+      "frame": 54,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 99.097,
+      "sharp_b": 99.097
+    },
+    {
+      "frame": 55,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 99.24,
+      "sharp_b": 99.24
+    },
+    {
+      "frame": 56,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 100.237,
+      "sharp_b": 100.237
+    },
+    {
+      "frame": 57,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 102.794,
+      "sharp_b": 102.794
+    },
+    {
+      "frame": 58,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 100.238,
+      "sharp_b": 100.238
+    },
+    {
+      "frame": 59,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 99.628,
+      "sharp_b": 99.628
+    },
+    {
+      "frame": 60,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 99.8,
+      "sharp_b": 99.8
+    },
+    {
+      "frame": 61,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 101.211,
+      "sharp_b": 101.211
+    },
+    {
+      "frame": 62,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 98.408,
+      "sharp_b": 98.408
+    },
+    {
+      "frame": 63,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 97.44,
+      "sharp_b": 97.44
+    },
+    {
+      "frame": 64,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 97.485,
+      "sharp_b": 97.485
+    },
+    {
+      "frame": 65,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 99.54,
+      "sharp_b": 99.54
+    },
+    {
+      "frame": 66,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 96.885,
+      "sharp_b": 96.885
+    },
+    {
+      "frame": 67,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 96.698,
+      "sharp_b": 96.698
+    },
+    {
+      "frame": 68,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 96.607,
+      "sharp_b": 96.607
+    },
+    {
+      "frame": 69,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 100.886,
+      "sharp_b": 100.886
+    },
+    {
+      "frame": 70,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 98.139,
+      "sharp_b": 98.139
+    },
+    {
+      "frame": 71,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 97.933,
+      "sharp_b": 97.933
+    },
+    {
+      "frame": 72,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 98.986,
+      "sharp_b": 98.986
+    },
+    {
+      "frame": 73,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 100.349,
+      "sharp_b": 100.349
+    },
+    {
+      "frame": 74,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 98.45,
+      "sharp_b": 98.45
+    },
+    {
+      "frame": 75,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 99.117,
+      "sharp_b": 99.117
+    },
+    {
+      "frame": 76,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 99.594,
+      "sharp_b": 99.594
+    },
+    {
+      "frame": 77,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 101.47,
+      "sharp_b": 101.47
+    },
+    {
+      "frame": 78,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 97.805,
+      "sharp_b": 97.805
+    },
+    {
+      "frame": 79,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 97.45,
+      "sharp_b": 97.45
+    },
+    {
+      "frame": 80,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 97.665,
+      "sharp_b": 97.665
+    },
+    {
+      "frame": 81,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 99.136,
+      "sharp_b": 99.136
+    },
+    {
+      "frame": 82,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 94.921,
+      "sharp_b": 94.921
+    },
+    {
+      "frame": 83,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 94.771,
+      "sharp_b": 94.771
+    },
+    {
+      "frame": 84,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 94.809,
+      "sharp_b": 94.809
+    },
+    {
+      "frame": 85,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 97.577,
+      "sharp_b": 97.577
+    },
+    {
+      "frame": 86,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 94.325,
+      "sharp_b": 94.325
+    },
+    {
+      "frame": 87,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 94.199,
+      "sharp_b": 94.199
+    },
+    {
+      "frame": 88,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 94.244,
+      "sharp_b": 94.244
+    },
+    {
+      "frame": 89,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 97.474,
+      "sharp_b": 97.474
+    },
+    {
+      "frame": 90,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 94.589,
+      "sharp_b": 94.589
+    },
+    {
+      "frame": 91,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 95.302,
+      "sharp_b": 95.302
+    },
+    {
+      "frame": 92,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 94.56,
+      "sharp_b": 94.56
+    },
+    {
+      "frame": 93,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 97.696,
+      "sharp_b": 97.696
+    },
+    {
+      "frame": 94,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 94.429,
+      "sharp_b": 94.429
+    },
+    {
+      "frame": 95,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 93.414,
+      "sharp_b": 93.414
+    },
+    {
+      "frame": 96,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 93.358,
+      "sharp_b": 93.358
+    },
+    {
+      "frame": 97,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 96.696,
+      "sharp_b": 96.696
+    },
+    {
+      "frame": 98,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 93.297,
+      "sharp_b": 93.297
+    },
+    {
+      "frame": 99,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 92.769,
+      "sharp_b": 92.769
+    },
+    {
+      "frame": 100,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 92.854,
+      "sharp_b": 92.854
+    },
+    {
+      "frame": 101,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 94.873,
+      "sharp_b": 94.873
+    },
+    {
+      "frame": 102,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 92.287,
+      "sharp_b": 92.287
+    },
+    {
+      "frame": 103,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 93.372,
+      "sharp_b": 93.372
+    },
+    {
+      "frame": 104,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 93.785,
+      "sharp_b": 93.785
+    },
+    {
+      "frame": 105,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 95.062,
+      "sharp_b": 95.062
+    },
+    {
+      "frame": 106,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 93.84,
+      "sharp_b": 93.84
+    },
+    {
+      "frame": 107,
+      "sha_equal": true,
+      "mad": 0.0,
+      "pearson_r": 1.0,
+      "psnr_db": "inf",
+      "ssim": 1.0,
+      "sharp_a": 94.317,
+      "sharp_b": 94.317
+    }
+  ]
+}

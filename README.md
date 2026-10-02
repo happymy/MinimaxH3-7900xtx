@@ -106,7 +106,7 @@ pause
 - `--reserve-vram 6`：预留 6GB 显存给 OS/桌面软件，避免生成期间切桌面卡顿/驱动超时
 - `--disable-api-nodes`：不加载 API 节点 + 前端不联网；`/prompt` 提交不受影响，plan 脚本照常可用
 - `--cache-none`：不缓存节点执行结果（每次运行全部节点重算），降 RAM/VRAM 占用，代价是重复执行
-- `--use-ck-attention`：启用 **Comfy Kitchen attention**（int8 内核，`comfy_kitchen` 0.2.36，本机 HIP 后端实测可用）。⚠️ **双重风险**：(1) 该参数**不是 fallback**——`comfy_kitchen` 缺失或 kernel 不支持时会打印错误并**直接退出**（`attention.py:918 exit(-1)`），本机已验证 `hip int8 avail: True`；(2) ⚠️⚠️ **0.2.36 有正确性回归**——token 数跨过 **64**（HIP 核 tile 宽度）时输出崩坏，**Qwen-Image 2.1 已确认**（绿/紫伪影、无异常抛出）。**Qwen-Image 请用 `run_amd_gpu_no_ck_attention.bat`**；H3 文本编码器不受影响（`small_input=True` 提前返回），但 **H3 DiT 主干仍属未验证风险**。完整证据链见 `plan\CK注意力回归问题调查报告.md` + `Plan.md §12`
+- `--use-ck-attention`：启用 **Comfy Kitchen attention**（int8 内核，`comfy_kitchen` 0.2.36，本机 HIP 后端实测可用）。⚠️ **双重风险**：(1) 该参数**不是 fallback**——`comfy_kitchen` 缺失或 kernel 不支持时会打印错误并**直接退出**（`attention.py:918 exit(-1)`），本机已验证 `hip int8 avail: True`；(2) ⚠️⚠️ **0.2.36 有正确性回归**——token 数跨过 **64**（HIP 核 tile 宽度）时输出崩坏，**Qwen-Image 2.1 已确认**（绿/紫伪影、无异常抛出）。**Qwen-Image 请用 `run_amd_gpu_no_ck_attention.bat`**；**MiniMax H3 已实测确认安全**（2026-10-02 受控 A/B：124 帧 SSIM 0.98849、平均像素差 0.9125/255、锐度 +5.50%、端到端 1.54x，四路判据全排除崩坏；H3 文本编码器另经源码核实不受影响）。完整证据链见 `plan\CK注意力回归问题调查报告.md` + `plan\ck_ab_20261002\` + `Plan.md §12`
 - ⚠️ **不要上 `--lowvram/--novram`**（把权重卸到系统内存徒增 swap）；**不要 `--use-sage-attention`**（AMD 无支持 + H3 全局 sage 出纯噪声，issue #15263）
 
 ### 4.2 自定义节点（custom_nodes/）
@@ -248,9 +248,10 @@ op 系列（官方 prompt 合规版，§11.9）：T2V/I2V 的 `length` 已从 73
 - 若 I2V/R2V 引用图/视频失败：换官方 bf16 编码器 `qwen3vl_4b_fp8_scaled.safetensors` 或 heretic bf16（8.3GB）
 - ❌ 8B 破限（T2b）**不要用于 I2V/R2V**：视觉塔 116 个张量降 F8_E4M3，图像路径有真实精度损失（§11.11.4）；破限只做 T2V 备选
 - 8B 首跑前**关掉其它 GPU 程序**：编码期峰值 ≈11–12GB（4B ≈3.6GB），T2b staged 16,721MB 超出可用显存需分页（§11.8.5）
-- ❌ **`--use-ck-attention` + Qwen-Image 2.1 = 输出崩坏**（2026-10-01 实测确认）：comfy-kitchen 0.2.36 的 masked attention 重写在**存活 token >64**（HIP 核 tile 宽度）时产出绿/紫伪影、纹理破碎，**且不抛任何异常**。**对策：Qwen-Image 改用 `run_amd_gpu_no_ck_attention.bat`。** 排查口诀：任何「提示词太长就崩」的症状，**先查启动 flag，别怀疑模型限制**。H3 文本编码器不受影响（`small_input=True` 提前返回 `attention_basic`），H3 DiT 主干**待验证**。详见 `plan\CK注意力回归问题调查报告.md`（5 组 flag 对照 + token 二分 + 源码定位）与 `Plan.md §12`
+- ❌ **`--use-ck-attention` + Qwen-Image 2.1 = 输出崩坏**（2026-10-01 实测确认）：comfy-kitchen 0.2.36 的 masked attention 重写在**存活 token >64**（HIP 核 tile 宽度）时产出绿/紫伪影、纹理破碎，**且不抛任何异常**。**对策：Qwen-Image 改用 `run_amd_gpu_no_ck_attention.bat`。** 排查口诀：任何「提示词太长就崩」的症状，**先查启动 flag，别怀疑模型限制**。
+- ✅ **同款 flag 对 MiniMax H3 已确认安全**（2026-10-02 受控 A/B，**不是同一个问题**）：H3 文本编码器不受影响（`small_input=True` 提前返回 `attention_basic`）；**H3 DiT 主干经 124 帧逐帧实测确认无损坏** —— SSIM 0.98849（全部帧 > 0.98）、平均像素差 0.9125/255、误差均匀弥散且高频为主、绿/紫伪影像素占比 **0.000%**、100% 裁切目视复核逐项无结构损坏、锐度 ck 侧 **+5.50%**（属「细节更清楚」而非假边缘）。差异性质是 **int8 量化导致的系统性微差**（落在另一个同样合法的采样结果上），**4 步 → 20 步差异收敛**（r 0.928 → 0.995）进一步排除崩坏。**H3 继续用带 ck 的 `run_amd_gpu_enable_dynamic_vram.bat`。** 详见 `plan\CK注意力回归问题调查报告.md`（Qwen 侧 5 组 flag 对照 + token 二分 + 源码定位）与 `plan\ck_ab_20261002\`（H3 侧 A/B 完整报告与原始数据）+ `Plan.md §12`
 
-> **ck-attention 现状速查**：加速 2.70x（真）· H3 文本侧安全（已核实源码）· Qwen-Image 2.1 崩坏（已确认）· H3 DiT 未验证 · 上游 issue [comfy-kitchen#226](https://github.com/Comfy-Org/comfy-kitchen/issues/226) 无修复版本 · 升级 comfy-kitchen 后必须重测 64 token 边界
+> **ck-attention 现状速查**：加速 2.70x（纯采样口径；总耗时 2.02x，甜点档端到端 1.54x）· H3 文本侧安全（源码核实）· Qwen-Image 2.1 崩坏（已确认）· **H3 DiT 安全（2026-10-02 实测确认）** · 上游 issue [comfy-kitchen#226](https://github.com/Comfy-Org/comfy-kitchen/issues/226) 无修复版本 · 升级 comfy-kitchen 后必须重测 64 token 边界**并重跑 `plan\ck_ab_20261002\` 的 A/B**
 
 ---
 
@@ -266,5 +267,6 @@ op 系列（官方 prompt 合规版，§11.9）：T2V/I2V 的 `length` 已从 73
 | `molbal_workflows\final\` | 工作流全集（§五） |
 | `README.md`（plan 内） | **plan 目录索引**：五区语义、文档清单、脚本族矩阵、工作流矩阵、整理记录、硬规矩（换机先读这份） |
 | `vram_model.py` | **显存估算模型**（纯标准库）：输出 `Plan.md §3` 全部表格，改常量即重算。改配置前先跑它算判据 |
-| `CK注意力回归问题调查报告.md` | ⚠️ `--use-ck-attention` 回归完整证据链（5 组 flag 对照 / token 64 边界二分 / 源码定位 / 版本溯源），对应 `Plan.md §12` |
+| `CK注意力回归问题调查报告.md` | ⚠️ `--use-ck-attention` 回归完整证据链（Qwen-Image 侧 5 组 flag 对照 / token 64 边界二分 / 源码定位 / 版本溯源），对应 `Plan.md §12` |
+| `ck_ab_20261002\` | ✅ **H3 侧 ck / 非-ck 受控 A/B**（2026-10-02）：报告 + 探针与比对脚本 + 5 次运行清单 + 逐帧原始指标。结论「H3 DiT 走 ck 安全」，对应 `Plan.md §12.3` / `§12.6` 待办 1（已关闭） |
 | `归档\日志\来源清单.md` | 12 个 `*.log` 归档前后路径对照（log 本身不入库） |
