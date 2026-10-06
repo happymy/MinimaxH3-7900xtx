@@ -35,6 +35,8 @@ Qwen-Image 2.1 (GGUF) 在本地 ComfyUI 上的工作流工具集。
 
 `node_schema.json` 是缓存，升级 ComfyUI 后跑一次 `fetch_schema.py` 刷新。
 
+> **2026-10-07 直连加固**：调 `127.0.0.1:8188` 的 9 份脚本（`run_api` / `fetch_schema` / `accept_full` / `attn_ab` / `cfg_ab` / `flag_sweep` / `len_bisect` / `shift_ab` / `bisect`）共 19 处 `urllib.request.urlopen` 已改为 `OPENER.open`，其中 `OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))` 定义在各文件 import 之后的模块级。原因：系统代理 `127.0.0.1:26561` 的 `ProxyOverride` 不放行 loopback，urllib 读注册表代理后本地请求被转交 → 404。**空 `ProxyHandler` 不依赖 `no_proxy` 环境变量**，双击 bat 也能直连。改前字节见 commit `8278ce9`。详见 `plan\README.md §6.6`。
+
 ## 用法
 
 ```powershell

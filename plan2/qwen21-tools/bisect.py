@@ -11,6 +11,9 @@ import sys
 import time
 import urllib.error
 import urllib.request
+# 本地 API 直连：系统代理 127.0.0.1:26561 不放行 loopback 会回 404；
+# 空 ProxyHandler 同时绕过环境变量与注册表代理，不依赖启动方式。
+OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
 sys.stdout.reconfigure(encoding="utf-8")
 
@@ -51,7 +54,7 @@ def post(api, prefix):
     body = json.dumps({"prompt": api, "client_id": "bisect"}).encode("utf-8")
     req = urllib.request.Request(BASE + "/prompt", data=body,
                                  headers={"Content-Type": "application/json"})
-    r = json.loads(urllib.request.urlopen(req, timeout=120).read())
+    r = json.loads(OPENER.open(req, timeout=120).read())
     return r["prompt_id"]
 
 
@@ -59,14 +62,14 @@ def wait(pid, timeout=900):
     t0 = time.time()
     seen = set()
     while time.time() - t0 < timeout:
-        h = json.loads(urllib.request.urlopen(BASE + "/history/" + pid, timeout=30).read())
+        h = json.loads(OPENER.open(BASE + "/history/" + pid, timeout=30).read())
         if pid in h:
             out = h[pid].get("outputs", {})
             files = []
             for v in out.values():
                 files += [x["filename"] for x in v.get("images", [])]
             return h[pid].get("status", {}).get("status_str"), files
-        q = json.loads(urllib.request.urlopen(BASE + "/queue", timeout=30).read())
+        q = json.loads(OPENER.open(BASE + "/queue", timeout=30).read())
         run = q.get("queue_running", [])
         pend = q.get("queue_pending", [])
         line = "  running=%d pending=%d  %ds" % (len(run), len(pend), time.time() - t0)

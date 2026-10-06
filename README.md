@@ -256,7 +256,7 @@ op 系列（官方 prompt 合规版，§11.9）：T2V/I2V 的 `length` 已从 73
 | `prompt说明.txt` | 根级提示词文件用法说明 |
 | `..\bak\` | ⚠️ **早期脚本退场副本，与 `bat\` 内同名文件易混，不要从这里取用** |
 
-依赖：ComfyUI 运行在 `http://127.0.0.1:8188`；ffmpeg（脚本内已写死本机 WinGet 版路径，换机需改 `FFMPEG` 常量）。`-8b` / `-8b-heretic` 变体与对应 4B 版归一后逐字节一致（§11.8.4）。
+依赖：ComfyUI 运行在 `http://127.0.0.1:8188`，**本地 API 一律直连**（2026-10-07 起 13 份脚本统一 `OPENER = build_opener(ProxyHandler({}))`，绕过系统代理，§八 有排雷）；ffmpeg（脚本内已写死本机 WinGet 版路径，换机需改 `FFMPEG` 常量）。`-8b` / `-8b-heretic` 变体与对应 4B 版归一后逐字节一致（§11.8.4）。
 
 ---
 
@@ -285,6 +285,7 @@ op 系列（官方 prompt 合规版，§11.9）：T2V/I2V 的 `length` 已从 73
 - ❌ **同时开两个 ComfyUI**（内存爆掉、系统直接卡死）。切换生图 ↔ 生视频必须先 `Get-Process python | Stop-Process -Force`，确认 8188 不再监听再起
 - ❌ 把「两个启动脚本都带 `--enable-dynamic-vram`」误认成「两个一样」——**区别只在 ck 开关**
 - ⚠️ **`--enable-dynamic-vram` 的残留物理页会让同一条工作流越跑越慢**（十几分钟的活拖成几小时）。段间清理由多段脚本内置 `POST /free` 完成；段外与批跑用 `plan\bat\free_vram\free_vram.bat`（`--status` 看状态、`--interval 60` 挂旁边周期清、`--no-verify` 发完即走）。**`/free` 是异步 flag 端点**：HTTP 200 只代表 flag 已设，真正卸载在当前任务结束后的 worker 线程执行，所以必须用 `/system_stats` 的 `vram_free` 上升来验证；任务执行中调用安全（不会打断 prompt），但它**救不了单个任务内部变慢**，那种只能重启 ComfyUI
+- ⚠️ **脚本报 `404` / `Not Found`，但浏览器开 `127.0.0.1:8188` 明明正常 → 先查系统代理，别怀疑 ComfyUI**：本机代理 `127.0.0.1:26561` 的 `ProxyOverride` **不放行 loopback**，双击 bat 的环境里又**没有 `no_proxy`**，`urllib.getproxies()` 会读**注册表**代理，把发往 `127.0.0.1:8188` 的请求也交给代理 → 代理回 404。**2026-10-07 已加固 22 份 / 68 处**（`plan\bat\` 13 份 + `plan2\qwen21-tools\` 9 份）统一 `OPENER = build_opener(ProxyHandler({}))` 直连，空 handler 同时绕过环境变量与注册表两种来源。⚠️ **opencode / 终端 shell 里往往自带 `NO_PROXY`，会掩盖这个坑** —— 别拿会话里「能跑」当证据，要用双击 bat 的环境验。残留 2 份 8 处按拍板保留（`ck_ab_20261002\gen_h3_ck_ab.py` 是实测锚点，**重跑前须先加 `OPENER`**；`bak\` 退场副本不取用），详见 `plan\README.md §6.6`
 - ❌ 独立 nicolab28 `ComfyUI-ClipProj`（CCTech 内置同源，避免同名冲突）
 - ❌ `ComfyUI-MiniMaxH3-Cache`（全局 monkey-patch 破坏 H3 生成）
 - ❌ Optimization Suite / SageAttention / Tiled VAE（NV 专属或对 H3 无效）

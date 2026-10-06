@@ -61,6 +61,9 @@ ref2va 段 0 与 fl2va 段 i>0 两张图共用同一组常量，两张图同步�
 import json, urllib.request, urllib.error, urllib.parse, time, sys, argparse, os, random, tempfile, subprocess, re
 
 API = 'http://127.0.0.1:8188'
+# 本地 API 直连：系统代理 127.0.0.1:26561 不放行 loopback 会回 404；
+# 空 ProxyHandler 同时绕过环境变量与注册表代理，不依赖启动方式。
+OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 FFMPEG = r'C:\Users\GAME\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg.Shared_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-9.0.2-full_build-shared\bin\ffmpeg.exe'
 
 GGUF_REF2VA = 'minimax_h3_ref2va_pruned-Q4_K_M.gguf'   # 段 0：参考图生成
@@ -143,7 +146,7 @@ def free_vram():
                                  data=json.dumps({'unload_models': True, 'free_memory': True}).encode('utf-8'),
                                  headers={'Content-Type': 'application/json'}, method='POST')
     try:
-        urllib.request.urlopen(req, timeout=15)
+        OPENER.open(req, timeout=15)
         print('vram: freed (unloaded models)')
     except Exception as e:
         print('WARN: free_vram failed: %s' % e)
@@ -154,7 +157,7 @@ def submit(graph):
                                  data=json.dumps({'prompt': graph}).encode('utf-8'),
                                  headers={'Content-Type': 'application/json'})
     try:
-        resp = json.loads(urllib.request.urlopen(req, timeout=15).read())
+        resp = json.loads(OPENER.open(req, timeout=15).read())
     except urllib.error.HTTPError as e:
         raise RuntimeError('submit failed: ' + e.read().decode('utf-8', 'replace')[:2000])
     if 'error' in resp:
@@ -166,7 +169,7 @@ def wait(pid, timeout=3600, interval=5, cur=1, total=1):
     start = time.time()
     while time.time() - start < timeout:
         try:
-            h = json.loads(urllib.request.urlopen(f'{API}/history/{pid}', timeout=5).read())
+            h = json.loads(OPENER.open(f'{API}/history/{pid}', timeout=5).read())
         except Exception:
             time.sleep(interval)
             continue
@@ -219,7 +222,7 @@ def upload_image(path, prefix=None):
             f'Content-Type: {ctype}\r\n\r\n').encode('utf-8') + data + f'\r\n--{boundary}--\r\n'.encode('utf-8')
     req = urllib.request.Request(API + '/upload/image', data=body,
                                  headers={'Content-Type': f'multipart/form-data; boundary={boundary}'})
-    r = json.loads(urllib.request.urlopen(req, timeout=30).read())
+    r = json.loads(OPENER.open(req, timeout=30).read())
     return r['name'] if not r.get('subfolder') else r['subfolder'] + '/' + r['name']
 
 

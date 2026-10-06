@@ -158,6 +158,8 @@ plan\API_workflows\未测试\final\
 其中 **8 个有 `prompt.txt`**（`multisegment*` 3 个、`ref2va*` 3 个、`scenes`、`scenes_ref`）；
 **7 个没有**（`extract_frames`、`qc_frames`、`free_vram`、`scenes_8b`、`scenes_8b_heretic`、`scenes_ref_8b`、`scenes_ref_8b_heretic`）。
 
+> 2026-10-07 起，12 份 `gen_*.py` 与 `free_vram.py` 全部改用模块级 `OPENER` 直连本地 API，`urllib.request.urlopen` 在 `bat\` 下已清零 —— 系统代理导致的 404 排查见 §6.6。
+
 `bat\归档\` 存官方三份 op 提示词（`prompt_t2v_op.txt` / `prompt_fl2va_op.txt` / `prompt_ref2va_op.txt`）+ 种子记录。
 （原 `dl_8b_heretic.log` 已于 2026-10-02 移入 `plan\归档\日志\`。）
 
@@ -204,7 +206,7 @@ bak noerror 0/1/2, bak RAW    ← 调试期快照
 
 ---
 
-## 6. 本次整理已执行（2026-10-02）
+## 6. 整理执行记录（6.1–6.5 于 2026-10-02，6.6 于 2026-10-07）
 
 ### 6.1 已归档运行残渣
 
@@ -241,6 +243,41 @@ bak noerror 0/1/2, bak RAW    ← 调试期快照
 
 `Plan.md` §11.4 磁盘列改用 **MiB / GiB（二进制）**，与显存列口径一致。
 T1 `3.11 GB`→`3,179 MiB / 3.10 GiB`、T2 `10.6 GB`→`10,098 MiB / 9.86 GiB`、T2b `9.33 GB`→`9,553 MiB / 9.33 GiB`。
+
+### 6.6 已加固本地 API 直连（2026-10-07）
+
+**22 份脚本 / 68 处** `urllib.request.urlopen` 统一改为模块级 opener 直连：
+
+```python
+OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+# ……调用处
+OPENER.open(req, timeout=15)
+```
+
+| 范围 | 份数 | 替换处数 |
+|---|---:|---:|
+| `bat\` 12 个生成族 `gen_h3_*.py` | 12 | 48 |
+| `bat\free_vram\free_vram.py` | 1 | 1（另加 docstring 第 6 条限制说明） |
+| `plan2\qwen21-tools\`（`run_api` / `fetch_schema` / `accept_full` / `attn_ab` / `cfg_ab` / `flag_sweep` / `len_bisect` / `shift_ab` / `bisect`） | 9 | 19 |
+| **合计** | **22** | **68** |
+
+**根因（四要素，缺一不可复现）**：
+
+1. 本机系统代理 `127.0.0.1:26561`，其 `ProxyOverride` **不含 `127.0.0.1`**
+2. 双击 `*.bat` 启动的环境里**没有 `no_proxy` 变量**
+3. `urllib.getproxies()` 会读**注册表**代理（不只是环境变量），把 `127.0.0.1:8188` 也发给代理 → 代理对本地端口回 **404**
+4. ⚠️ **opencode shell 里恰好有 `NO_PROXY`，会掩盖这个坑** —— 在会话里测「没坏」不能作为证据，必须用双击 bat 的环境验
+
+**症状与排查口诀**：脚本报 `404` / `Not Found` 但浏览器打开 `127.0.0.1:8188` 明明正常 → **先查系统代理，别怀疑 ComfyUI**。空 `ProxyHandler` 同时绕过环境变量与注册表两种来源，不依赖调用方环境，所以比设 `no_proxy` 更稳。
+
+**未覆盖残留（2026-10-07 拍板保留，共 2 份 8 处）**：
+
+| 文件 | 处数 | 保留理由 | 将来怎么用 |
+|---|---:|---|---|
+| `ck_ab_20261002\gen_h3_ck_ab.py` | 4 | §3 登记的实测证据锚点，A/B 已跑完不复跑 | **重跑前必须先加 `OPENER`**，否则 404 |
+| `bak\gen_h3_multisegment.py` | 4 | §8 硬规矩「退场副本，不要取用」 | 不取用即可 |
+
+**回滚锚点**：22 份的改前字节全在 commit `8278ce9`，`git show 8278ce9:<path>` 可逐字节取回；D 盘与仓库 sha256 一致，仓库即锚点，故未留 `.bak`。
 
 ---
 

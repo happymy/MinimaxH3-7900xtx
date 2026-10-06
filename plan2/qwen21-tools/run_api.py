@@ -1,5 +1,8 @@
 """Execute a converted api_*.json through the running ComfyUI server."""
 import json, sys, time, urllib.request
+# 本地 API 直连：系统代理 127.0.0.1:26561 不放行 loopback 会回 404；
+# 空 ProxyHandler 同时绕过环境变量与注册表代理，不依赖启动方式。
+OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
 BASE = "http://127.0.0.1:8188"
 path = sys.argv[1]
@@ -15,14 +18,14 @@ for node in api.values():
 
 
 def get(p):
-    return json.loads(urllib.request.urlopen(BASE + p, timeout=60).read())
+    return json.loads(OPENER.open(BASE + p, timeout=60).read())
 
 
 req = urllib.request.Request(BASE + "/prompt",
                              data=json.dumps({"prompt": api, "client_id": "wf-test"}).encode(),
                              headers={"Content-Type": "application/json"})
 try:
-    res = json.loads(urllib.request.urlopen(req, timeout=120).read())
+    res = json.loads(OPENER.open(req, timeout=120).read())
 except urllib.error.HTTPError as e:
     print("REJECTED", e.code)
     print(e.read().decode(errors="replace")[:4000])

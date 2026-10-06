@@ -3,6 +3,9 @@ input names in declaration order, the widget-typed subset, and the set of
 link-typed names. Autogrow sockets are stored by the frontend as `name.1`,
 `name.2`, ... so the base name is what the API expects."""
 import json, os, sys, urllib.request
+# 本地 API 直连：系统代理 127.0.0.1:26561 不放行 loopback 会回 404；
+# 空 ProxyHandler 同时绕过环境变量与注册表代理，不依赖启动方式。
+OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "node_schema.json")
 LINKY = {"IMAGE", "LATENT", "MODEL", "CLIP", "VAE", "CONDITIONING", "MASK", "CONTROL_NET",
@@ -10,7 +13,7 @@ LINKY = {"IMAGE", "LATENT", "MODEL", "CLIP", "VAE", "CONDITIONING", "MASK", "CON
          "SIGMAS", "UPSCALE_MODEL", "PHOTOMAKER", "STYLE_MODEL", "BBOX_DETECTOR",
          "SEGM_DETECTOR", "VOICE_CLONE", "TTS_MODEL", "FACE_MODEL", "IMAGE_NOISE"}
 
-raw = json.loads(urllib.request.urlopen("http://127.0.0.1:8188/object_info", timeout=180).read())
+raw = json.loads(OPENER.open("http://127.0.0.1:8188/object_info", timeout=180).read())
 
 schema = {}
 for name, d in raw.items():

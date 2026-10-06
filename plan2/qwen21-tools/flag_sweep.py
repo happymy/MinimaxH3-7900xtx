@@ -18,6 +18,9 @@ import sys
 import time
 import urllib.error
 import urllib.request
+# 本地 API 直连：系统代理 127.0.0.1:26561 不放行 loopback 会回 404；
+# 空 ProxyHandler 同时绕过环境变量与注册表代理，不依赖启动方式。
+OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 import zlib
 
 sys.stdout.reconfigure(encoding="utf-8")
@@ -128,7 +131,7 @@ def wait_ready(timeout=300):
     while time.time() - t0 < timeout:
         if port_open():
             try:
-                urllib.request.urlopen(BASE + "/system_stats", timeout=20).read()
+                OPENER.open(BASE + "/system_stats", timeout=20).read()
                 log("    就绪，用时 %d 秒" % int(time.time() - t0))
                 return True
             except Exception:
@@ -196,10 +199,10 @@ def run_one(prefix, timeout=1200):
                        "client_id": "sweep"}).encode("utf-8")
     req = urllib.request.Request(BASE + "/prompt", data=body,
                                  headers={"Content-Type": "application/json"})
-    pid = json.loads(urllib.request.urlopen(req, timeout=180).read())["prompt_id"]
+    pid = json.loads(OPENER.open(req, timeout=180).read())["prompt_id"]
     t0 = time.time()
     while time.time() - t0 < timeout:
-        h = json.loads(urllib.request.urlopen(BASE + "/history/" + pid,
+        h = json.loads(OPENER.open(BASE + "/history/" + pid,
                                               timeout=30).read())
         if pid in h:
             files = []

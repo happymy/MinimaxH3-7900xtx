@@ -17,6 +17,9 @@ import sys
 import time
 import urllib.error
 import urllib.request
+# 本地 API 直连：系统代理 127.0.0.1:26561 不放行 loopback 会回 404；
+# 空 ProxyHandler 同时绕过环境变量与注册表代理，不依赖启动方式。
+OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
 sys.stdout.reconfigure(encoding="utf-8")
 sys.path.insert(0, r"D:\localAI\ComfyUI-last\ComfyUI_windows_portable\ComfyUI")
@@ -100,13 +103,13 @@ def post(api):
     body = json.dumps({"prompt": api, "client_id": "lenbisect"}).encode("utf-8")
     req = urllib.request.Request(BASE + "/prompt", data=body,
                                  headers={"Content-Type": "application/json"})
-    return json.loads(urllib.request.urlopen(req, timeout=120).read())["prompt_id"]
+    return json.loads(OPENER.open(req, timeout=120).read())["prompt_id"]
 
 
 def wait(pid, timeout=900):
     t0 = time.time()
     while time.time() - t0 < timeout:
-        h = json.loads(urllib.request.urlopen(BASE + "/history/" + pid, timeout=30).read())
+        h = json.loads(OPENER.open(BASE + "/history/" + pid, timeout=30).read())
         if pid in h:
             files = []
             for v in h[pid].get("outputs", {}).values():

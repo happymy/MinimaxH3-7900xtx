@@ -36,6 +36,8 @@
 | `accept_full.py` | 验收：用用户原始完整提示词（95 字符 / 101 token，远超原 74 字符崩坏点）在修正 flag 下重跑 |
 | `sheet.py` | 把 BISECT_* 输出拼成带标签的对照图 |
 
+> **2026-10-07 直连加固**：17 份里调 `127.0.0.1:8188` 的 **9 份 / 19 处**（`run_api` / `fetch_schema` / `accept_full` / `attn_ab` / `cfg_ab` / `flag_sweep` / `len_bisect` / `shift_ab` / `bisect`）已把 `urllib.request.urlopen` 换成模块级 `OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))`。起因是系统代理 `127.0.0.1:26561` 不放行 loopback 导致本地请求回 404。其余 8 份不碰 HTTP（`ui2api` / `check_workflows` / `adapt_workflows` / `add_shift_all` / `make_q8_set` / `fix_q8_instance` / `probe_tokens` / `sheet`）。完整根因与排查口诀见 `plan\README.md §6.6`。
+
 ### 2.2 上游 issue 材料（提交给 comfy-kitchen）
 
 | 文件 | 内容 |

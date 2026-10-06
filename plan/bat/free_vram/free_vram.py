@@ -28,6 +28,11 @@
     5. 任务执行中 VRAM 自己会波动（DiT -> 解码的阶段切换、图里的
        ForceUnloadBeforeDecode），那不是 /free 的效果。只有 running 归零之后
        vram_free 上升，才算 flag 真正被消费、释放生效。
+    6. 必须禁用代理直连：本机系统代理 127.0.0.1:26561 的 ProxyOverride 不含
+       127.0.0.1，而双击 bat 的环境里没有 no_proxy 变量，urllib 默认会读
+       注册表代理，把 127.0.0.1:8188 也发过去 -> 代理回 404。所以全部请求
+       走 ProxyHandler({}) 直连，不依赖环境变量（opencode shell 里恰好有
+       NO_PROXY，会掩盖这个坑，别拿它当"没坏"的证据）。
 """
 import json, urllib.request, urllib.error, time, sys, argparse
 
@@ -40,6 +45,12 @@ MB = 2 ** 20
 
 sys.stdout.reconfigure(line_buffering=True)   # 重定向到文件时也逐行落盘
 
+# 本地 API 一律直连，不碰代理：本机系统代理 127.0.0.1:26561 的 ProxyOverride
+# 不含 127.0.0.1，双击 bat 的环境里又没有 no_proxy，urllib.getproxies() 就会
+# 读注册表把请求发给代理 -> 代理对 127.0.0.1:8188 回 404。空 ProxyHandler
+# 同时绕过环境变量和注册表两种来源，不依赖调用方环境。
+OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
 
 def api(path, data=None, timeout=15):
     """GET 或 POST 一个 JSON 端点，返回解析后的 dict。"""
@@ -50,7 +61,7 @@ def api(path, data=None, timeout=15):
         headers['Content-Type'] = 'application/json'
     req = urllib.request.Request(BASE + path, data=body, headers=headers,
                                  method='POST' if data is not None else 'GET')
-    raw = urllib.request.urlopen(req, timeout=timeout).read()
+    raw = OPENER.open(req, timeout=timeout).read()
     return json.loads(raw) if raw.strip() else {}   # /free 回 200 空体
 
 
