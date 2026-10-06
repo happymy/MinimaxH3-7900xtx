@@ -131,7 +131,7 @@ plan\API_workflows\未测试\final\
 
 ## 4. `bat\` 脚本族矩阵
 
-**4 个生成族 × 3 个文本编码器变体 = 12 个目录**，加 2 个工具目录（工具无变体），`bat\` 下共 14 个脚本目录。
+**4 个生成族 × 3 个文本编码器变体 = 12 个目录**，加 3 个工具目录（工具无变体），`bat\` 下共 15 个脚本目录。
 
 变体唯一差别是 `CCTechClipProjLoader` 节点的 `clip_name` / `type` / `projection` 三元组
 （`gen_*.py` docstring 里逐条列明，实测取自工作流 JSON 的 `widgets_values`）：
@@ -152,10 +152,11 @@ plan\API_workflows\未测试\final\
 | `ref2va` | 3 | 参考图生成视频 + ffmpeg 拼接 | 多段参考图 |
 | `extract_frames` | 1 | 工具：抽首/中/末帧 → PNG | 供 ref2va 造参考图 |
 | `qc_frames` | 1 | 工具：质检抽帧 + contact sheet | 配合 `vision-deepseek` 识图 |
+| `free_vram` | 1 | 工具：调 ComfyUI `/free` 卸载模型、释放 Dynamic VRAM 残留 | 无 TE 变体；`--status` / `--interval N` / `--no-verify` |
 
-每个目录都含 `gen_*.py` + `gen_*.bat`（Windows 入口）。
+每个生成/工具目录都含 `gen_*.py` + `gen_*.bat`（Windows 入口），**唯一例外 `free_vram\` 是 `free_vram.py` + `free_vram.bat`**（不走 `gen_` 前缀，它不生成内容）。
 其中 **8 个有 `prompt.txt`**（`multisegment*` 3 个、`ref2va*` 3 个、`scenes`、`scenes_ref`）；
-**6 个没有**（`extract_frames`、`qc_frames`、`scenes_8b`、`scenes_8b_heretic`、`scenes_ref_8b`、`scenes_ref_8b_heretic`）。
+**7 个没有**（`extract_frames`、`qc_frames`、`free_vram`、`scenes_8b`、`scenes_8b_heretic`、`scenes_ref_8b`、`scenes_ref_8b_heretic`）。
 
 `bat\归档\` 存官方三份 op 提示词（`prompt_t2v_op.txt` / `prompt_fl2va_op.txt` / `prompt_ref2va_op.txt`）+ 种子记录。
 （原 `dl_8b_heretic.log` 已于 2026-10-02 移入 `plan\归档\日志\`。）

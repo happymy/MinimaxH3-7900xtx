@@ -228,7 +228,7 @@ op 系列（官方 prompt 合规版，§11.9）：T2V/I2V 的 `length` 已从 73
 
 ## 六、Python 脚本（plan/bat/，2026-10-02 重构为「族 × TE 变体」矩阵）
 
-**4 个生成族 × 3 个 TE 变体 = 12 个目录 + 2 个工具目录 + 提示词模板/归档/分段归档**。变体唯一差别是 `CCTechClipProjLoader` 的 `clip_name` / `type` / `projection` 三元组（`krea2` / `boogu` 是**节点 type 枚举值**，不是文件名）：
+**4 个生成族 × 3 个 TE 变体 = 12 个目录 + 3 个工具目录 + 提示词模板/归档/分段归档**。变体唯一差别是 `CCTechClipProjLoader` 的 `clip_name` / `type` / `projection` 三元组（`krea2` / `boogu` 是**节点 type 枚举值**，不是文件名）：
 
 | 后缀 | clip_name | type | projection |
 |---|---|---|---|
@@ -244,8 +244,9 @@ op 系列（官方 prompt 合规版，§11.9）：T2V/I2V 的 `length` 已从 73
 | `ref2va[_8b\|_8b_heretic]\` | 参考图生成视频（ref2va er_sde）+ ffmpeg 拼接 | 段 0 用参考图，后续段首帧续接 |
 | `extract_frames\` | 工具：抽 **首/中/末** 三帧 PNG（`--mid` 调中间帧，防覆盖） | 无 TE 变体 |
 | `qc_frames\` | 工具：QC 抽帧 + contact sheet（配 `vision-deepseek` 识图） | 无 TE 变体 |
+| `free_vram\` | 工具：调 ComfyUI `/free` 卸载模型、释放 Dynamic VRAM 残留（§八） | 无 TE 变体 |
 
-每个目录含 `gen_*.py` + `gen_*.bat`（Windows 入口）。`prompt.txt` 随目录（交互模式优先读同目录，另有 `--prompt-file`，UTF-8/GBK 自动识别；`--prompt` 为单条、全部段复用）。输出重名自动追加 `_1/_2` 防覆盖。
+每个目录含 `gen_*.py` + `gen_*.bat`（Windows 入口），**例外 `free_vram\` = `free_vram.py` + `free_vram.bat`**。`prompt.txt` 随目录（交互模式优先读同目录，另有 `--prompt-file`，UTF-8/GBK 自动识别；`--prompt` 为单条、全部段复用）。输出重名自动追加 `_1/_2` 防覆盖。
 
 | 辅助目录 | 内容 |
 |---|---|
@@ -283,6 +284,7 @@ op 系列（官方 prompt 合规版，§11.9）：T2V/I2V 的 `length` 已从 73
 
 - ❌ **同时开两个 ComfyUI**（内存爆掉、系统直接卡死）。切换生图 ↔ 生视频必须先 `Get-Process python | Stop-Process -Force`，确认 8188 不再监听再起
 - ❌ 把「两个启动脚本都带 `--enable-dynamic-vram`」误认成「两个一样」——**区别只在 ck 开关**
+- ⚠️ **`--enable-dynamic-vram` 的残留物理页会让同一条工作流越跑越慢**（十几分钟的活拖成几小时）。段间清理由多段脚本内置 `POST /free` 完成；段外与批跑用 `plan\bat\free_vram\free_vram.bat`（`--status` 看状态、`--interval 60` 挂旁边周期清、`--no-verify` 发完即走）。**`/free` 是异步 flag 端点**：HTTP 200 只代表 flag 已设，真正卸载在当前任务结束后的 worker 线程执行，所以必须用 `/system_stats` 的 `vram_free` 上升来验证；任务执行中调用安全（不会打断 prompt），但它**救不了单个任务内部变慢**，那种只能重启 ComfyUI
 - ❌ 独立 nicolab28 `ComfyUI-ClipProj`（CCTech 内置同源，避免同名冲突）
 - ❌ `ComfyUI-MiniMaxH3-Cache`（全局 monkey-patch 破坏 H3 生成）
 - ❌ Optimization Suite / SageAttention / Tiled VAE（NV 专属或对 H3 无效）
@@ -308,7 +310,7 @@ op 系列（官方 prompt 合规版，§11.9）：T2V/I2V 的 `length` 已从 73
 | `ComfyUI_MiniMaxH3_From_Scratch.md` | 从零重建全流程（干净 portable → 可跑） |
 | `T2V_4B_vs_8B_对比报告.md` | 4B vs 8B 单变量对比（耗时/显存/逐帧指标），含 0.6MP 补测与破限 A/B（2026-09-30） |
 | `vision_qc_识图结论.md` | H3 产物画质识图结论（vision-deepseek 通道，抽帧 QC） |
-| `plan\bat\`（脚本） | 全部 Python 脚本 + bat 启动器 + prompt 模板（§六），**按族 × TE 变体分 14 个子目录** |
+| `plan\bat\`（脚本） | 全部 Python 脚本 + bat 启动器 + prompt 模板（§六），**按族 × TE 变体分 15 个子目录** |
 | `plan\molbal_workflows\final\` | 工作流全集（§五） |
 | `plan\vram_model.py` | **显存估算模型**（纯标准库）：输出 `Plan.md §3` 全部表格，改常量即重算。改配置前先跑它算判据 |
 | `plan\CK注意力回归问题调查报告.md` | ⚠️ `--use-ck-attention` 回归完整证据链（Qwen-Image 侧 5 组 flag 对照 / token 64 边界二分 / 源码定位 / 版本溯源），对应 `Plan.md §12`。**权威版在 `plan\`，`plan2\qwen21-tools\` 下是副本** |
