@@ -273,17 +273,17 @@ T1 `3.11 GB`→`3,179 MiB / 3.10 GiB`、T2 `10.6 GB`→`10,098 MiB / 9.86 GiB`�
 | ~~`提示词模板-视频.txt` 在 `bat\` 与 `final\` 双份~~ | ✅ **已解决**：唯一实体已归 `bat\提示词模板\提示词模板-视频.txt`（4053 B / 67 行，10-01 修订版），`final\` 侧只剩 0 字节指针 `提示词模板在bat里.txt`。仓库另存删减前版本为 `final\提示词模板-视频.txt.pre-trim-20261001.bak`（§2.1） |
 | `API_workflows\未测试\` 目录名 | ⚠️ **语义与内容矛盾**：名字叫「未测试」，但用户 2026-10-06 确认所有工作流均已实战跑通，且该目录内还套着 `final\` 交付层（15 份）。按 §8 硬规矩**不改名**，仅记录 |
 | 仍指向 `molbal_workflows/test` 的脚本 **5 份** | §6.2 只修了点名的 2 份 8B 脚本。仍为失效路径（正确应为 `final\4b\` / `final\4b\op\`）的 5 份：`bak\gen_h3_multisegment.py`、`bat\multisegment\gen_h3_multisegment.py`、`bat\scenes\gen_h3_scenes.py`、`bat\scenes_8b\gen_h3_scenes-8b.py`、`bat\scenes_8b_heretic\gen_h3_scenes-8b-heretic.py`。**仅注释，不影响运行**；按 §8 硬规矩未授权故未动 |
-| `infinite-creation\Final\qwen3_tts_voice_design_GUFF.json` | **文件名双重错误**：① `GUFF` 是 `GGUF` 拼错；② 它**根本没用 GGUF** —— 该工作流走 `QwenTTSModelsLoader` 从 HuggingFace 拉 `Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign`，`precision: bf16`。它其实是 **UI 格式 → API 格式的适配版**（原版 `qwen3_tts_voice_design.json` 用 `Qwen3TTSModelLoader` + `Qwen3TTSVoiceDesign`，API 版换成了 `⚡` 后缀的 `QwenTTSModelsLoader` + `QwenTTSVoiceDesignGenerate` + `SaveAudio`），而同目录其它 API 版文件都没加后缀，命名不统一。按 §8 硬规矩**不改名**，仅记录 |
+| ~~`infinite-creation\Final\qwen3_tts_voice_design_GUFF.json`~~ | ✅ **已解决**（2026-10-06）：`GUFF` → `GGUF` 已由用户改名（覆盖 §8 不改名硬规矩），**改名后实测跑通**；D 盘与仓库同步，字节未变（sha256 `A4B50744…17233C21`）。事实备注（非遗留问题）：内容仍走 `QwenTTSModelsLoader` 从 HuggingFace 拉 `Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign`、`precision: bf16`（非 GGUF 量化），且是 UI 格式 → API 格式的适配版（原版 `qwen3_tts_voice_design.json` 用 `Qwen3TTSModelLoader` + `Qwen3TTSVoiceDesign`，API 版换成 `⚡` 后缀的 `QwenTTSModelsLoader` + `QwenTTSVoiceDesignGenerate` + `SaveAudio`），同目录其它 API 版文件无后缀 |
 
 ---
 
-## 7.3 命名瑕疵汇总（均按 §8 硬规矩不改名，仅记录）
+## 7.3 命名瑕疵汇总（默认按 §8 硬规矩不改名，仅记录；唯一例外见表内标注）
 
 | 位置 | 瑕疵 | 处置 |
 |---|---|---|
 | `API_workflows\未测试\` | 目录名暗示未验证，实际全部跑通，且内含 `final\` 交付层 | 记录。取交付层看 `未测试\final\` |
 | `API_workflows\未测试\final\README.md` | 原文 9 处路径引用写作 `API_workflows\final\`，该路径不存在 | **已改正**（2026-10-06，文档非工作流，可改） |
-| `…\Final\qwen3_tts_voice_design_GUFF.json` | `GUFF` 拼错 + 实际非 GGUF + 实为 API 适配版却无统一后缀 | 记录，不改名 |
+| ~~`…\Final\qwen3_tts_voice_design_GUFF.json`~~ | ✅ **已解决**：`GUFF` 拼错 → 2026-10-06 改名 `GGUF` 并实测跑通（本表唯一改名例外，用户授权覆盖 §8）；内容事实见 §7.2 | 已闭环 |
 | `API_workflows\{Calliope,go}\bak 04  OK` | 双空格 | 记录 |
 
 ---

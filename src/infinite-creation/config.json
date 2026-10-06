@@ -1,0 +1,30 @@
+{
+  "debug": false,
+  "server": {
+    "port": 4600
+  },
+  "comfyui": {
+    "baseUrl": "http://127.0.0.1:8188"
+  },
+  "llm": {
+    "baseUrl": "http://127.0.0.1:1234/v1",
+    "apiKey": "123456",
+    "model": "Huihui-Qwen3.8-27B-abliterated-GGUF",
+    "tools": true,
+    "vision": false
+  },
+  "generation": {
+    "imageConcurrency": 2,
+    "videoConcurrency": 1,
+    "retryTimes": 3,
+    "videoTimeoutMinutes": 90,
+    "imageTimeoutMinutes": 30,
+    "videoFreeAfterEvery": 3
+  },
+  "workflows": {
+    "t2i": "qwen_image_2_1_t2i_gguf",
+    "i2i": "qwen_image_2_1_i2i_gguf",
+    "r2v": "minimax_h3_r2v_gguf",
+    "tts": "qwen3_tts_voice_design_gguf"
+  }
+}

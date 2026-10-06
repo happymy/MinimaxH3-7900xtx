@@ -274,6 +274,8 @@ op 系列（官方 prompt 合规版，§11.9）：T2V/I2V 的 `length` 已从 73
 > **仓库仍不含的本机资产**（2026-10-06 调整）：上一轮把 `API_workflows\` 整棵排除在外（理由「只在本机脚本链里用」），**本轮改判入库** —— 它含 API 格式交付层 15 份，换机必需。净增 194 文件 / 2.72 MB，含完整 `API_workflows\`（103）、`归档\日志\`（13）、`molbal_workflows\bak noerror *` 与 `bak RAW`（15）、以及整个 `plan2\`（52，Qwen-Image 2.1 生图线）。
 >
 > 仍不入库的都是**可重生成的产物**（约 31.8 MB）：`bat\` 下的 mp4 与 PNG 帧（22.26 MB）、`ck_ab_20261002\` 对照图与自检样本（6.44 MB）、`plan2` 两张对照图（2.94 MB）、`bat\测试素材\`、全部 `*.pyc`。逐条清单见 `plan\README.md` 顶部说明块。
+>
+> **另入库 `src/infinite-creation/config.json`**（2026-10-06，651 B）：infinite-creation 编排器的本机配置 —— ComfyUI `127.0.0.1:8188`、本地 LLM `127.0.0.1:1234/v1`（`Huihui-Qwen3.8-27B-abliterated-GGUF`）、t2i/i2i/r2v/tts 四类工作流映射。实机源 `D:\localAI\ComfyUI-last\src\infinite-creation\`（该目录是独立 Next.js 项目，**仓库只收这一份配置**，其余 `vendor\`、`node_modules\` 等不入库）。
 
 ---
 
