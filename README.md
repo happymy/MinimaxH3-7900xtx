@@ -79,15 +79,38 @@ cond = ((h - mean_in) / std_in) @ W * std_out + mean_out
 
 ### 4.1 启动脚本（portable 根目录）
 
-**`run_amd_gpu_enable_dynamic_vram.bat`**（**日常启动 / 主力（MiniMax H3）**；`--enable-dynamic-vram` 在 ROCm <7.14 需手动开启，官方 7.14+ 才默认启用，本机 ROCm 7.2.1 必须加）：
+> **⚠️ 硬规则：只能同时开一个 ComfyUI。** 同时开两个会内存爆掉、系统直接卡死。
+> 切换用途（生图 ↔ 生视频）必须**先完全关掉旧实例**（`Get-Process python | Stop-Process -Force`），
+> 确认 8188 不再监听，再起新的。启动前先探：
+> ```powershell
+> if ((Get-NetTCPConnection -LocalPort 8188 -State Listen -ErrorAction SilentlyContinue) -or (Test-NetConnection 127.0.0.1 -Port 8188 -InformationLevel Quiet)) { "已在运行，别再起" } else { 启动对应脚本 }
+> ```
+
+| 用途 | 启动脚本 | `--use-ck-attention` |
+|---|---|:---:|
+| **MiniMax H3 生视频**（t2v / i2v / ref2v） | `run_amd_gpu_enable_dynamic_vram.bat` | ✅ 开 |
+| **Qwen-Image 2.1 生图**（t2i / edit / 抠图） | `run_amd_gpu_no_ck_attention.bat` | ❌ 关 |
+
+**两个脚本都带 `--enable-dynamic-vram`** —— 动态显存是 OOM 的关键，这条不变；区别**只在 ck 开关**，所以别认错脚本。
+
+**`run_amd_gpu_enable_dynamic_vram.bat`**（**H3 生视频主力**；`--enable-dynamic-vram` 在 ROCm <7.14 需手动开启，官方 7.14+ 才默认启用，本机 ROCm 7.2.1 必须加）：
 ```bat
 %PYTHON% -s %TARGET% --windows-standalone-build --enable-dynamic-vram --disable-pinned-memory --fp16-intermediates --disable-smart-memory --reserve-vram 6 --disable-api-nodes --cache-none --use-ck-attention
 ```
 
-**`run_amd_gpu_no_ck_attention.bat`**（**Qwen-Image 2.1 用**——去掉 `--use-ck-attention`，其余逐字与主力一致，保证 A/B 可比。⚠️ 必须用它跑 Qwen-Image，理由见参数表 `--use-ck-attention` 行与 §8）：
+**`run_amd_gpu_no_ck_attention.bat`**（**Qwen-Image 2.1 生图**——去掉 `--use-ck-attention`，其余逐字与主力一致，保证 A/B 可比。⚠️ 必须用它跑 Qwen-Image，理由见参数表 `--use-ck-attention` 行与 §8）：
 ```bat
 %PYTHON% -s %TARGET% --windows-standalone-build --enable-dynamic-vram --disable-pinned-memory --disable-smart-memory --reserve-vram 6 --disable-api-nodes --cache-none --fp16-intermediates
 ```
+
+**常驻进程的启动方式**（裸挂管道会卡死 opencode 会话，必须重定向输出）：
+```powershell
+Start-Process -FilePath "cmd.exe" -ArgumentList "/c","run_amd_gpu_enable_dynamic_vram.bat" `
+  -WorkingDirectory "D:\localAI\ComfyUI-last\ComfyUI_windows_portable" `
+  -RedirectStandardOutput "C:\Users\GAME\AppData\Local\Temp\opencode\comfyui.log" `
+  -RedirectStandardError  "C:\Users\GAME\AppData\Local\Temp\opencode\comfyui.err.log" -PassThru -WindowStyle Hidden
+```
+（用 `/c` 不是 `/k`：脚本末尾有 `pause`，`/k` 会留下一个挂着的窗口。）启动后轮询 `http://127.0.0.1:8188/system_stats` 直到 200，首次启动要加载模型通常 1–2 分钟。
 
 **`run_amd_gpu.bat`**（**已弃用**，仅保留原版 `.bak` 作对照，勿再日常使用）：
 ```bat
@@ -176,7 +199,20 @@ python_embeded\python.exe -m pip install opencv-python-headless -i https://mirro
 | `8b\` | `minimax_h3_*-gguf-8b.json` | 8B stock 三套基底 |
 | `op-8b\`（主力） | `minimax_h3_*-gguf-8b-op.json` | 8B stock + 官方 prompt |
 | `op-8b-heretic\` | `minimax_h3_*-gguf-8b-heretic-op.json` | 8B 破限 + 官方 prompt（T2V 用） |
-| 根目录 | `qwen_image_2_1_{t2i,image_edit,background_removal}[-Q8_0]_gguf.json` ×6（+ 3 份 `.pre-q8fix.bak`） | Qwen-Image 2.1（与 H3 无关，**跑它必须换 no_ck 启动脚本**，见 §八）；prompt 模板已迁至 `plan\bat\提示词模板\`，`提示词模板在bat里.txt` 是 0 字节指针 |
+| 根目录 | `qwen_image_2_1_{t2i,image_edit,background_removal}[-Q8_0]_gguf.json` ×6 | Qwen-Image 2.1（与 H3 无关，**跑它必须换 no_ck 启动脚本**，见 §八）；prompt 模板已迁至 `plan\bat\提示词模板\`，`提示词模板在bat里.txt` 是 0 字节指针 |
+
+### 5.1 API 格式工作流（`plan/API_workflows/`，2026-10-06 入库）
+
+UI 格式（`molbal_workflows\`）拖进画布用；**API 格式**走 `POST /prompt` 提交，由 `plan\bat\` 下的脚本链驱动，参数覆盖只在内存中、不落盘。103 文件 / 7 个子目录：
+
+| 子目录 | 内容 |
+|---|---|
+| `未测试\final\{4b,4b\op,8b,op-8b,op-8b-heretic}\` | **API 格式交付层 15 份**，与 `molbal_workflows\final\` 层级刻意对齐。⚠️ 目录名 `未测试` 是历史遗留，全部工作流实际均已跑通 |
+| `未测试\{op,8b,op-8b,op-8b-heretic}\` | 上述交付层的拷贝源，各 3 份 |
+| `infinite-creation\Final\` | 官方 infinite-creation 模板交付（8 份，含 Qwen3-TTS Voice Design） |
+| `RAW\` | 原始快照，含 `bak\009/010-*-NOAV*` 去音频对照版 |
+| `omy\` / `Calliope\` / `go\` | 调试线与快照（`bak 04  OK` 等命名不统一，见 `plan\README.md §7.2`） |
+| `_audit\` | 7 份工具脚本，校验 RAW → 交付层的适配链路 |
 
 替换两处（模板 `UnetLoaderGGUFDynamicVRAM`/`CLIPLoader` → CCTech）：
 1. `UnetLoaderGGUF`：`unet_name=minimax_h3_fl2va_pruned-Q4_K_M.gguf`（ref2v 用 ref2va）
@@ -235,12 +271,16 @@ op 系列（官方 prompt 合规版，§11.9）：T2V/I2V 的 `length` 已从 73
 8. 导入工作流（§五，按档位选 `4b\` / `op-8b\` 等）替换素材 → 按 §一参数跑 T2V 冒烟，再 I2V / R2V
 9. 改任何模型/分辨率组合前，先跑 `python plan\vram_model.py` 过判据（`Plan.md §3.6` 速查）
 
-> **仓库不含的两类本机资产**（2026-10-02 裁决）：`API_workflows\`（API 格式工作流，走 `/prompt` 提交，含 `final\` 交付层 15 份 + README）保留在实机 `D:\localAI\ComfyUI-last\plan\API_workflows\`，随本机使用不随仓库分发；`bat\分段归档\`、`归档\日志\` 下的 mp4 / log / png 产物同理不入库（见 `plan\README.md §8`）。
+> **仓库仍不含的本机资产**（2026-10-06 调整）：上一轮把 `API_workflows\` 整棵排除在外（理由「只在本机脚本链里用」），**本轮改判入库** —— 它含 API 格式交付层 15 份，换机必需。净增 194 文件 / 2.72 MB，含完整 `API_workflows\`（103）、`归档\日志\`（13）、`molbal_workflows\bak noerror *` 与 `bak RAW`（15）、以及整个 `plan2\`（52，Qwen-Image 2.1 生图线）。
+>
+> 仍不入库的都是**可重生成的产物**（约 31.8 MB）：`bat\` 下的 mp4 与 PNG 帧（22.26 MB）、`ck_ab_20261002\` 对照图与自检样本（6.44 MB）、`plan2` 两张对照图（2.94 MB）、`bat\测试素材\`、全部 `*.pyc`。逐条清单见 `plan\README.md` 顶部说明块。
 
 ---
 
 ## 八、已知排雷（详见 plan 文档 §8）
 
+- ❌ **同时开两个 ComfyUI**（内存爆掉、系统直接卡死）。切换生图 ↔ 生视频必须先 `Get-Process python | Stop-Process -Force`，确认 8188 不再监听再起
+- ❌ 把「两个启动脚本都带 `--enable-dynamic-vram`」误认成「两个一样」——**区别只在 ck 开关**
 - ❌ 独立 nicolab28 `ComfyUI-ClipProj`（CCTech 内置同源，避免同名冲突）
 - ❌ `ComfyUI-MiniMaxH3-Cache`（全局 monkey-patch 破坏 H3 生成）
 - ❌ Optimization Suite / SageAttention / Tiled VAE（NV 专属或对 H3 无效）
@@ -255,18 +295,33 @@ op 系列（官方 prompt 合规版，§11.9）：T2V/I2V 的 `length` 已从 73
 
 ---
 
-## 九、相关文档（plan/）
+## 九、相关文档
+
+### 9.1 H3 生视频线（`plan/`）
 
 | 文档 | 内容 |
 |---|---|
-| `ComfyUI_MiniMaxH3_AMD_7900XTX_Plan.md` | 主计划：全部实测决策、§11 8B 路线 / 分辨率换算表 / 耗时模型 |
+| `plan\README.md` | **先读这份**：H3 侧资产地图（五区语义 / 文档清单 / 脚本族矩阵 / 工作流矩阵 / API_workflows 树 / 整理记录 / 硬规矩） |
+| `plan\ComfyUI_MiniMaxH3_AMD_7900XTX_Plan.md` | 主计划：全部实测决策、§11 8B 路线 / 分辨率换算表 / 耗时模型、§12 ck 回归专章、§13 资产分布 |
 | `ComfyUI_MiniMaxH3_From_Scratch.md` | 从零重建全流程（干净 portable → 可跑） |
 | `T2V_4B_vs_8B_对比报告.md` | 4B vs 8B 单变量对比（耗时/显存/逐帧指标），含 0.6MP 补测与破限 A/B（2026-09-30） |
 | `vision_qc_识图结论.md` | H3 产物画质识图结论（vision-deepseek 通道，抽帧 QC） |
-| `bat\`（脚本） | 全部 Python 脚本 + bat 启动器 + prompt 模板（§六），**按族 × TE 变体分 14 个子目录** |
-| `molbal_workflows\final\` | 工作流全集（§五） |
-| `README.md`（plan 内） | **plan 目录索引**：五区语义、文档清单、脚本族矩阵、工作流矩阵、整理记录、硬规矩（换机先读这份） |
-| `vram_model.py` | **显存估算模型**（纯标准库）：输出 `Plan.md §3` 全部表格，改常量即重算。改配置前先跑它算判据 |
-| `CK注意力回归问题调查报告.md` | ⚠️ `--use-ck-attention` 回归完整证据链（Qwen-Image 侧 5 组 flag 对照 / token 64 边界二分 / 源码定位 / 版本溯源），对应 `Plan.md §12` |
-| `ck_ab_20261002\` | ✅ **H3 侧 ck / 非-ck 受控 A/B**（2026-10-02）：报告 + 探针与比对脚本 + 5 次运行清单 + 逐帧原始指标。结论「H3 DiT 走 ck 安全」，对应 `Plan.md §12.3` / `§12.6` 待办 1（已关闭） |
-| `归档\日志\来源清单.md` | 12 个 `*.log` 归档前后路径对照（log 本身不入库） |
+| `plan\bat\`（脚本） | 全部 Python 脚本 + bat 启动器 + prompt 模板（§六），**按族 × TE 变体分 14 个子目录** |
+| `plan\molbal_workflows\final\` | 工作流全集（§五） |
+| `plan\vram_model.py` | **显存估算模型**（纯标准库）：输出 `Plan.md §3` 全部表格，改常量即重算。改配置前先跑它算判据 |
+| `plan\CK注意力回归问题调查报告.md` | ⚠️ `--use-ck-attention` 回归完整证据链（Qwen-Image 侧 5 组 flag 对照 / token 64 边界二分 / 源码定位 / 版本溯源），对应 `Plan.md §12`。**权威版在 `plan\`，`plan2\qwen21-tools\` 下是副本** |
+| `plan\ck_ab_20261002\` | ✅ **H3 侧 ck / 非-ck 受控 A/B**（2026-10-02）：报告 + 探针与比对脚本 + 5 次运行清单 + 逐帧原始指标。结论「H3 DiT 走 ck 安全」，对应 `Plan.md §12.3` / `§12.6` 待办 1（已关闭） |
+| `plan\API_workflows\H3工作流适配计划.md` | API 格式工作流适配方案 |
+| `plan\API_workflows\未测试\final\README.md` | API 格式交付层（15 份）的来源与三套 TE 对照 |
+| `plan\归档\日志\来源清单.md` | 12 个 `*.log` 归档前后路径对照 |
+
+### 9.2 Qwen-Image 2.1 生图线（`plan2/`，2026-10-06 入库）
+
+`plan2\` 是 `plan\` 的**姊妹目录**（并列，不是父子），实机在 `D:\localAI\ComfyUI-last\plan2\`。
+
+| 文档 | 内容 |
+|---|---|
+| `plan2\README.md` | **先读这份**：Qwen 侧资产地图（工具脚本 17 份 / 上游 issue 材料 / 实验留痕 / 硬编码路径 / 与 `plan\` 的分工） |
+| `plan2\Qwen-Image-2.1-GGUF-部署总结.md` | 主文档：目标 / 结论 / 环境 / 模型 / 适配做了什么 / 节点依赖 / 实测结果 / 9 节踩坑 |
+| `plan2\qwen21-tools\` | 工具链（`ui2api.py` / `check_workflows.py` / `run_api.py` / `fetch_schema.py` 等）+ 22 份实验 API 图 + 上游 issue #226 材料 |
+| `plan2\qwen21-tools\CK注意力回归问题调查报告.md` | `plan\CK注意力回归问题调查报告.md` 的副本（2026-10-06 同步，§7.3 已关闭） |

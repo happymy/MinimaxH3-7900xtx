@@ -1,0 +1,78 @@
+[
+  {
+    "name": "T2V-4B-0.40",
+    "workflow": "op/minimax_h3_t2v-gguf-api-op.json",
+    "overrides": {
+      "115": {
+        "megapixels": 0.4
+      }
+    },
+    "ts": "2026-09-30 11:21:48",
+    "te": "qwen3-vl-4b-heretic-Q4_K_M.gguf | krea2 | mmh3-4b-ClipProj-v3.1.safetensors",
+    "megapixels": 0.415,
+    "aspect": "16:9 (Widescreen)",
+    "seed": 1104405517180391,
+    "unet": "minimax_h3_fl2va_pruned-Q4_K_M.gguf",
+    "ts_start": "11:21:48",
+    "prompt_id": "949f5659-cf4e-4a6f-8cba-6560b7c9278a",
+    "ts_end": "11:29:09",
+    "dt_sec": 440.2,
+    "status": "success",
+    "output": "video/MiniMax_H3_00165_.mp4",
+    "ok": true,
+    "parser_bug_fixed": true,
+    "output_path": "D:\\localAI\\ComfyUI-last\\ComfyUI_windows_portable\\ComfyUI\\output\\video\\MiniMax_H3_00165_.mp4",
+    "file_exists": true,
+    "mem_peak_mb": 22459,
+    "mem_floor_mb": 3815,
+    "width": 864,
+    "height": 480,
+    "fps": 24.0,
+    "nb_frames": "124",
+    "duration": 5.167,
+    "video_codec": "h264",
+    "pix_fmt": "yuv420p",
+    "audio_codec": "aac",
+    "audio_ch": 2,
+    "audio_sr": "32000",
+    "size_mb": 0.65
+  },
+  {
+    "name": "T2V-8B-0.40",
+    "workflow": "op-8b/minimax_h3_t2v-gguf-api-8b-op.json",
+    "overrides": {
+      "115": {
+        "megapixels": 0.4
+      }
+    },
+    "ts": "2026-09-30 11:29:29",
+    "te": "qwen3vl_8b_fp8_scaled.safetensors | boogu | mmh3-8b-ClipProj-v3.1.safetensors",
+    "megapixels": 0.415,
+    "aspect": "16:9 (Widescreen)",
+    "seed": 1104405517180391,
+    "unet": "minimax_h3_fl2va_pruned-Q4_K_M.gguf",
+    "ts_start": "11:29:29",
+    "prompt_id": "b708ddca-65eb-458f-82ad-03b68599dac8",
+    "ts_end": "11:36:53",
+    "dt_sec": 443.8,
+    "status": "success",
+    "output": "video/MiniMax_H3_00166_.mp4",
+    "ok": true,
+    "parser_bug_fixed": true,
+    "output_path": "D:\\localAI\\ComfyUI-last\\ComfyUI_windows_portable\\ComfyUI\\output\\video\\MiniMax_H3_00166_.mp4",
+    "file_exists": true,
+    "mem_peak_mb": 20761,
+    "mem_floor_mb": 7405,
+    "width": 864,
+    "height": 480,
+    "fps": 24.0,
+    "nb_frames": "124",
+    "duration": 5.167,
+    "video_codec": "h264",
+    "pix_fmt": "yuv420p",
+    "audio_codec": "aac",
+    "audio_ch": 2,
+    "audio_sr": "32000",
+    "size_mb": 0.8
+  }
+]

@@ -1,0 +1,117 @@
+{
+  "results": [
+    {
+      "name": "AB-CTRL-8B-STOCK",
+      "workflow": "op-8b/minimax_h3_t2v-gguf-api-8b-op.json",
+      "overrides": {
+        "115": {
+          "megapixels": 0.4
+        }
+      },
+      "ts": "2026-09-30 13:02:17",
+      "te": "qwen3vl_8b_fp8_scaled.safetensors | boogu | mmh3-8b-ClipProj-v3.1.safetensors",
+      "megapixels": 0.4,
+      "aspect": "16:9 (Widescreen)",
+      "seed": 1104405517180391,
+      "seconds": 5,
+      "unet": "minimax_h3_fl2va_pruned-Q4_K_M.gguf",
+      "force_unload_nodes": [
+        "135",
+        "136"
+      ],
+      "mem_floor_mb": 3828,
+      "ts_start": "13:02:19",
+      "prompt_id": "48f79db3-d1a1-4907-a2c4-4ab1f7573630",
+      "ts_end": "13:09:51",
+      "dt_sec": 451.0,
+      "mem_peak_mb": 20614,
+      "gpu_mem_samples": 112,
+      "status": "success",
+      "output": "video/MiniMax_H3_00168_.mp4",
+      "output_path": "D:\\localAI\\ComfyUI-last\\ComfyUI_windows_portable\\ComfyUI\\output\\video\\MiniMax_H3_00168_.mp4",
+      "file_exists": true,
+      "probe_ok": true,
+      "video_codec": "h264",
+      "width": 864,
+      "height": 480,
+      "fps": 24.0,
+      "nb_frames": "124",
+      "v_duration": "5.166667",
+      "pix_fmt": "yuv420p",
+      "audio_codec": "aac",
+      "audio_ch": 2,
+      "audio_sr": "32000",
+      "a_duration": "5.167000",
+      "duration": 5.167,
+      "size_bytes": 834346,
+      "ok": true
+    },
+    {
+      "name": "AB-TEST-8B-HERETIC",
+      "workflow": "op-8b-heretic/minimax_h3_t2v-gguf-api-8b-heretic-op.json",
+      "overrides": {
+        "115": {
+          "megapixels": 0.4
+        }
+      },
+      "ts": "2026-09-30 13:10:16",
+      "te": "qwen3-vl-8b-heretic-1.3.0_fp8_e4m3fn.safetensors | boogu | mmh3-8b-ClipProj-v3.1.safetensors",
+      "megapixels": 0.4,
+      "aspect": "16:9 (Widescreen)",
+      "seed": 1104405517180391,
+      "seconds": 5,
+      "unet": "minimax_h3_fl2va_pruned-Q4_K_M.gguf",
+      "force_unload_nodes": [
+        "135",
+        "136"
+      ],
+      "mem_floor_mb": 7462,
+      "ts_start": "13:10:18",
+      "prompt_id": "63b04841-f07b-48c3-bf2a-2cad6c2cb2c7",
+      "ts_end": "13:17:40",
+      "dt_sec": 442.0,
+      "mem_peak_mb": 7462,
+      "gpu_mem_samples": 0,
+      "status": "success",
+      "output": "video/MiniMax_H3_00169_.mp4",
+      "output_path": "D:\\localAI\\ComfyUI-last\\ComfyUI_windows_portable\\ComfyUI\\output\\video\\MiniMax_H3_00169_.mp4",
+      "file_exists": true,
+      "probe_ok": true,
+      "video_codec": "h264",
+      "width": 864,
+      "height": 480,
+      "fps": 24.0,
+      "nb_frames": "124",
+      "v_duration": "5.166667",
+      "pix_fmt": "yuv420p",
+      "audio_codec": "aac",
+      "audio_ch": 2,
+      "audio_sr": "32000",
+      "a_duration": "5.167000",
+      "duration": 5.167,
+      "size_bytes": 808203,
+      "ok": true
+    }
+  ],
+  "comparisons": [
+    {
+      "a": "hist00166",
+      "b": "ctrl_stock",
+      "a_path": "D:\\localAI\\ComfyUI-last\\ComfyUI_windows_portable\\ComfyUI\\output\\video\\MiniMax_H3_00166_.mp4",
+      "b_path": "D:\\localAI\\ComfyUI-last\\ComfyUI_windows_portable\\ComfyUI\\output\\video\\MiniMax_H3_00168_.mp4",
+      "hash_err": "Command '['C:\\\\Users\\\\GAME\\\\AppData\\\\Local\\\\Microsoft\\\\WinGet\\\\Packages\\\\Gyan.FFmpeg.Shared_Microsoft.Winget.Source_8wekyb3d8bbwe\\\\ffmpeg-9.0.2-full_build-shared\\\\bin\\\\ffmpeg.exe', '-v', 'error', '-i', 'D:\\\\localAI\\\\ComfyUI-last\\\\ComfyUI_windows_portable\\\\ComfyUI\\\\output\\\\video\\\\MiniMax_H3_00166_.mp",
+      "ssim": "",
+      "psnr": ""
+    },
+    {
+      "a": "ctrl_stock",
+      "b": "test_heretic",
+      "a_path": "D:\\localAI\\ComfyUI-last\\ComfyUI_windows_portable\\ComfyUI\\output\\video\\MiniMax_H3_00168_.mp4",
+      "b_path": "D:\\localAI\\ComfyUI-last\\ComfyUI_windows_portable\\ComfyUI\\output\\video\\MiniMax_H3_00169_.mp4",
+      "hash_err": "Command '['C:\\\\Users\\\\GAME\\\\AppData\\\\Local\\\\Microsoft\\\\WinGet\\\\Packages\\\\Gyan.FFmpeg.Shared_Microsoft.Winget.Source_8wekyb3d8bbwe\\\\ffmpeg-9.0.2-full_build-shared\\\\bin\\\\ffmpeg.exe', '-v', 'error', '-i', 'D:\\\\localAI\\\\ComfyUI-last\\\\ComfyUI_windows_portable\\\\ComfyUI\\\\output\\\\video\\\\MiniMax_H3_00168_.mp",
+      "ssim": "",
+      "psnr": ""
+    }
+  ],
+  "finished": "2026-09-30 13:18:06"
+}

@@ -1,0 +1,23 @@
+
+##### NOISE-FLOOR : stock-run1 (00166) vs stock-run2 (00168) #####
+  逐帧 sha256: 124/124 一致 (100.00%)
+  SSIM 摘要: SSIM Y:1.000000 (inf) U:1.000000 (inf) V:1.000000 (inf) All:1.000000 (inf)
+  PSNR 摘要: PSNR y:inf u:inf v:inf average:inf min:inf max:inf
+  逐帧 SSIM: {"n": 124, "inf": 0, "min": 1.0, "max": 1.0, "mean": 1.0, "median": 1.0, "worst_frames_1based": [1, 2, 3, 4, 5]}
+  逐帧 PSNR: null
+
+##### TE-EFFECT : stock (00168) vs heretic (00169) #####
+  逐帧 sha256: 0/124 一致 (0.00%)
+  SSIM 摘要: SSIM Y:0.799125 (6.970731) U:0.891955 (9.663967) V:0.869932 (8.858304) All:0.826398 (7.604443)
+  PSNR 摘要: PSNR y:21.072311 u:23.574532 v:24.836440 average:21.879455 min:12.579217 max:28.394016
+  逐帧 SSIM: {"n": 124, "inf": 0, "min": 0.43264, "max": 0.92678, "mean": 0.8264, "median": 0.89092, "worst_frames_1based": [1]}
+  逐帧 PSNR: {"n": 124, "inf": 0, "min": 12.58, "max": 28.39, "mean": 23.75919, "median": 22.58, "worst_frames_1based": [106]}
+
+##### CROSS-HIST : stock-run1 (00166) vs heretic (00169) #####
+  逐帧 sha256: 0/124 一致 (0.00%)
+  SSIM 摘要: SSIM Y:0.799125 (6.970731) U:0.891955 (9.663967) V:0.869932 (8.858304) All:0.826398 (7.604443)
+  PSNR 摘要: PSNR y:21.072311 u:23.574532 v:24.836440 average:21.879455 min:12.579217 max:28.394016
+  逐帧 SSIM: {"n": 124, "inf": 0, "min": 0.43264, "max": 0.92678, "mean": 0.8264, "median": 0.89092, "worst_frames_1based": [1]}
+  逐帧 PSNR: {"n": 124, "inf": 0, "min": 12.58, "max": 28.39, "mean": 23.75919, "median": 22.58, "worst_frames_1based": [106]}
+
+=== 已写入 D:\localAI\ComfyUI-last\plan\ab_8b_heretic_metrics.json ===

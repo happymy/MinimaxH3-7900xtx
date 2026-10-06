@@ -1,0 +1,9 @@
+[WARNING] offload-arch failed with return code 1
+[stderr] 
+
+********
+Warning: flash-attn is not installed. Will only run the manual PyTorch version. Please install flash-attn for faster inference.
+********
+ 
+[1;34m[CCTech Suite]: 🤖🤖🤖 [96m[3mCapacitor doing the cha-cha![0m 🤖🤖🤖
+[1;34m[CCTech Suite]:[0m Activated [96m73[0m GGUF loader nodes (🤖 CCTech/GGUF).

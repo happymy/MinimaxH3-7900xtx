@@ -1,0 +1,45 @@
+{
+  "library_id": 9,
+  "name": "minimax_h3_ref2v-gguf-api-NOAV",
+  "kind": "image",
+  "prompt_profile": "minimax_h3_ref",
+  "is_enabled": 1,
+  "description": "",
+  "created_at": "2026-09-12 10:44:00",
+  "input_schema": [
+    {
+      "nodeId": "135",
+      "label": "Duration",
+      "role": "duration",
+      "kind": "number",
+      "defaultValue": 5,
+      "required": true
+    },
+    {
+      "nodeId": "149",
+      "label": "Ref Image 1",
+      "role": "image",
+      "kind": "image",
+      "defaultValue": null,
+      "required": true
+    },
+    {
+      "nodeId": "300",
+      "label": "Text Prompt",
+      "role": "prompt",
+      "kind": "textarea",
+      "defaultValue": "A baby in a shopping cart eating an apple with exaggerated nom nom sounds while the title 'MiniMax H3 Ref2VA' and 'GGUF Q8_CR' are displayed.",
+      "required": true
+    }
+  ],
+  "output_schema": [
+    {
+      "nodeId": "92",
+      "label": "保存视频",
+      "role": "video",
+      "kind": "video"
+    }
+  ],
+  "node_count": 21,
+  "source": "D:\\localAI\\ComfyUI-last\\src\\Calliope\\calliope-backend\\data\\calliope.db"
+}

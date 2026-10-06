@@ -1,0 +1,187 @@
+{
+  "pairs": [
+    {
+      "tag": "NOISE-FLOOR",
+      "a": "stock-run1 (00166)",
+      "b": "stock-run2 (00168)",
+      "a_path": "D:\\localAI\\ComfyUI-last\\ComfyUI_windows_portable\\ComfyUI\\output\\video\\MiniMax_H3_00166_.mp4",
+      "b_path": "D:\\localAI\\ComfyUI-last\\ComfyUI_windows_portable\\ComfyUI\\output\\video\\MiniMax_H3_00168_.mp4",
+      "a_probe": {
+        "w": 864,
+        "h": 480,
+        "fps": "24/1",
+        "frames": 124,
+        "dur": 5.167,
+        "v_codec": "h264",
+        "pix_fmt": "yuv420p",
+        "a_codec": "aac",
+        "size": 834346
+      },
+      "b_probe": {
+        "w": 864,
+        "h": 480,
+        "fps": "24/1",
+        "frames": 124,
+        "dur": 5.167,
+        "v_codec": "h264",
+        "pix_fmt": "yuv420p",
+        "a_codec": "aac",
+        "size": 834346
+      },
+      "frames": {
+        "a": 124,
+        "b": 124,
+        "compared": 124,
+        "identical": 124,
+        "identical_pct": 100.0,
+        "differing": 0
+      },
+      "ssim_summary": "SSIM Y:1.000000 (inf) U:1.000000 (inf) V:1.000000 (inf) All:1.000000 (inf)",
+      "psnr_summary": "PSNR y:inf u:inf v:inf average:inf min:inf max:inf",
+      "ssim_per_frame": {
+        "n": 124,
+        "inf": 0,
+        "min": 1.0,
+        "max": 1.0,
+        "mean": 1.0,
+        "median": 1.0,
+        "worst_frames_1based": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ]
+      },
+      "ssim_lines": 124,
+      "psnr_per_frame": null,
+      "psnr_lines": 124
+    },
+    {
+      "tag": "TE-EFFECT",
+      "a": "stock (00168)",
+      "b": "heretic (00169)",
+      "a_path": "D:\\localAI\\ComfyUI-last\\ComfyUI_windows_portable\\ComfyUI\\output\\video\\MiniMax_H3_00168_.mp4",
+      "b_path": "D:\\localAI\\ComfyUI-last\\ComfyUI_windows_portable\\ComfyUI\\output\\video\\MiniMax_H3_00169_.mp4",
+      "a_probe": {
+        "w": 864,
+        "h": 480,
+        "fps": "24/1",
+        "frames": 124,
+        "dur": 5.167,
+        "v_codec": "h264",
+        "pix_fmt": "yuv420p",
+        "a_codec": "aac",
+        "size": 834346
+      },
+      "b_probe": {
+        "w": 864,
+        "h": 480,
+        "fps": "24/1",
+        "frames": 124,
+        "dur": 5.167,
+        "v_codec": "h264",
+        "pix_fmt": "yuv420p",
+        "a_codec": "aac",
+        "size": 808203
+      },
+      "frames": {
+        "a": 124,
+        "b": 124,
+        "compared": 124,
+        "identical": 0,
+        "identical_pct": 0.0,
+        "differing": 124
+      },
+      "ssim_summary": "SSIM Y:0.799125 (6.970731) U:0.891955 (9.663967) V:0.869932 (8.858304) All:0.826398 (7.604443)",
+      "psnr_summary": "PSNR y:21.072311 u:23.574532 v:24.836440 average:21.879455 min:12.579217 max:28.394016",
+      "ssim_per_frame": {
+        "n": 124,
+        "inf": 0,
+        "min": 0.43264,
+        "max": 0.92678,
+        "mean": 0.8264,
+        "median": 0.89092,
+        "worst_frames_1based": [
+          1
+        ]
+      },
+      "ssim_lines": 124,
+      "psnr_per_frame": {
+        "n": 124,
+        "inf": 0,
+        "min": 12.58,
+        "max": 28.39,
+        "mean": 23.75919,
+        "median": 22.58,
+        "worst_frames_1based": [
+          106
+        ]
+      },
+      "psnr_lines": 124
+    },
+    {
+      "tag": "CROSS-HIST",
+      "a": "stock-run1 (00166)",
+      "b": "heretic (00169)",
+      "a_path": "D:\\localAI\\ComfyUI-last\\ComfyUI_windows_portable\\ComfyUI\\output\\video\\MiniMax_H3_00166_.mp4",
+      "b_path": "D:\\localAI\\ComfyUI-last\\ComfyUI_windows_portable\\ComfyUI\\output\\video\\MiniMax_H3_00169_.mp4",
+      "a_probe": {
+        "w": 864,
+        "h": 480,
+        "fps": "24/1",
+        "frames": 124,
+        "dur": 5.167,
+        "v_codec": "h264",
+        "pix_fmt": "yuv420p",
+        "a_codec": "aac",
+        "size": 834346
+      },
+      "b_probe": {
+        "w": 864,
+        "h": 480,
+        "fps": "24/1",
+        "frames": 124,
+        "dur": 5.167,
+        "v_codec": "h264",
+        "pix_fmt": "yuv420p",
+        "a_codec": "aac",
+        "size": 808203
+      },
+      "frames": {
+        "a": 124,
+        "b": 124,
+        "compared": 124,
+        "identical": 0,
+        "identical_pct": 0.0,
+        "differing": 124
+      },
+      "ssim_summary": "SSIM Y:0.799125 (6.970731) U:0.891955 (9.663967) V:0.869932 (8.858304) All:0.826398 (7.604443)",
+      "psnr_summary": "PSNR y:21.072311 u:23.574532 v:24.836440 average:21.879455 min:12.579217 max:28.394016",
+      "ssim_per_frame": {
+        "n": 124,
+        "inf": 0,
+        "min": 0.43264,
+        "max": 0.92678,
+        "mean": 0.8264,
+        "median": 0.89092,
+        "worst_frames_1based": [
+          1
+        ]
+      },
+      "ssim_lines": 124,
+      "psnr_per_frame": {
+        "n": 124,
+        "inf": 0,
+        "min": 12.58,
+        "max": 28.39,
+        "mean": 23.75919,
+        "median": 22.58,
+        "worst_frames_1based": [
+          106
+        ]
+      },
+      "psnr_lines": 124
+    }
+  ]
+}

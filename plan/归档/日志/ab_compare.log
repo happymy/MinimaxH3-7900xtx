@@ -1,0 +1,25 @@
+
+########## NOISE-FLOOR : 历史原版00166 vs 本次原版00168 ##########
+  A: {'w': 864, 'h': 480, 'fps': '24/1', 'frames': '124', 'dur': '5.166667', 'size': 834346}  D:\localAI\ComfyUI-last\ComfyUI_windows_portable\ComfyUI\output\video\MiniMax_H3_00166_.mp4
+  B: {'w': 864, 'h': 480, 'fps': '24/1', 'frames': '124', 'dur': '5.166667', 'size': 834346}  D:\localAI\ComfyUI-last\ComfyUI_windows_portable\ComfyUI\output\video\MiniMax_H3_00168_.mp4
+  逐帧 sha256: 124/124 完全一致 (100.00%)  不同帧数=0
+  SSIM: 
+  PSNR: 
+
+########## TE-EFFECT : 本次原版00168 vs 破限版00169 ##########
+  A: {'w': 864, 'h': 480, 'fps': '24/1', 'frames': '124', 'dur': '5.166667', 'size': 834346}  D:\localAI\ComfyUI-last\ComfyUI_windows_portable\ComfyUI\output\video\MiniMax_H3_00168_.mp4
+  B: {'w': 864, 'h': 480, 'fps': '24/1', 'frames': '124', 'dur': '5.166667', 'size': 808203}  D:\localAI\ComfyUI-last\ComfyUI_windows_portable\ComfyUI\output\video\MiniMax_H3_00169_.mp4
+  逐帧 sha256: 0/124 完全一致 (0.00%)  不同帧数=124
+  前 20 个不同帧号(1-based): [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
+  SSIM: 
+  PSNR: 
+
+########## CROSS-HIST : 历史原版00166 vs 破限版00169 ##########
+  A: {'w': 864, 'h': 480, 'fps': '24/1', 'frames': '124', 'dur': '5.166667', 'size': 834346}  D:\localAI\ComfyUI-last\ComfyUI_windows_portable\ComfyUI\output\video\MiniMax_H3_00166_.mp4
+  B: {'w': 864, 'h': 480, 'fps': '24/1', 'frames': '124', 'dur': '5.166667', 'size': 808203}  D:\localAI\ComfyUI-last\ComfyUI_windows_portable\ComfyUI\output\video\MiniMax_H3_00169_.mp4
+  逐帧 sha256: 0/124 完全一致 (0.00%)  不同帧数=124
+  前 20 个不同帧号(1-based): [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
+  SSIM: 
+  PSNR: 
+
+=== 比对完成，已写入 plan\ab_8b_heretic_compare.json ===

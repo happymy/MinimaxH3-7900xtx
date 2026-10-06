@@ -1,0 +1,22 @@
+=== 等待 ComfyUI 队列排空 ===
+=== 队列已空，开跑 2026-09-30 13:02:17 ===
+>>> AB-CTRL-8B-STOCK
+    prompt_id=48f79db3-d1a1-4907-a2c4-4ab1f7573630  开始采样显存 ...
+    ok=True status=success dt=451.0s peak=20614MB out=video/MiniMax_H3_00168_.mp4 864x480 124f audio=aac
+>>> AB-TEST-8B-HERETIC
+    prompt_id=63b04841-f07b-48c3-bf2a-2cad6c2cb2c7  开始采样显存 ...
+    ok=True status=success dt=442.0s peak=7462MB out=video/MiniMax_H3_00169_.mp4 864x480 124f audio=aac
+
+=== 历史原版产物存在: True (D:\localAI\ComfyUI-last\ComfyUI_windows_portable\ComfyUI\output\video\MiniMax_H3_00166_.mp4) ===
+
+>>> 比对 1: 本次原版 vs 历史原版 00166（同 TE 复跑 -> 噪声地板）
+    逐帧一致 None/None (0.00%)  首差帧=None
+    SSIM: 
+    PSNR: 
+
+>>> 比对 2: 原版 vs 破限（同 seed 同参数，唯一变量=TE）
+    逐帧一致 None/None (0.00%)  首差帧=None
+    SSIM: 
+    PSNR: 
+
+=== 完成: 2/2 生成成功；比对 2 组 ===

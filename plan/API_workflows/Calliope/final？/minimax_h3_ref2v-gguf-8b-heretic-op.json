@@ -1,0 +1,344 @@
+{
+  "92": {
+    "inputs": {
+      "filename_prefix": "video/MiniMax_H3",
+      "format": "auto",
+      "format.codec": "auto",
+      "codec": "auto",
+      "video": [
+        "132",
+        0
+      ]
+    },
+    "class_type": "SaveVideo",
+    "_meta": {
+      "title": "(Output:video) Result"
+    }
+  },
+  "115": {
+    "inputs": {
+      "aspect_ratio": "9:16 (Portrait Widescreen)",
+      "megapixels": 0.5,
+      "multiple": 32
+    },
+    "class_type": "ResolutionSelector",
+    "_meta": {
+      "title": "分辨率选择器"
+    }
+  },
+  "123": {
+    "inputs": {
+      "vae_name": "minimax_h3_video_vae_fp16.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "加载VAE"
+    }
+  },
+  "124": {
+    "inputs": {
+      "vae_name": "minimax_h3_audio_vae_fp32.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "加载VAE"
+    }
+  },
+  "125": {
+    "inputs": {
+      "samples": [
+        "157",
+        0
+      ],
+      "vae": [
+        "124",
+        0
+      ]
+    },
+    "class_type": "VAEDecodeAudio",
+    "_meta": {
+      "title": "VAE解码（音频）"
+    }
+  },
+  "126": {
+    "inputs": {
+      "samples": [
+        "157",
+        0
+      ],
+      "vae": [
+        "123",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE解码"
+    }
+  },
+  "127": {
+    "inputs": {
+      "sampler_name": "er_sde"
+    },
+    "class_type": "KSamplerSelect",
+    "_meta": {
+      "title": "K采样器选择"
+    }
+  },
+  "128": {
+    "inputs": {
+      "scheduler": "simple",
+      "steps": 20,
+      "denoise": 1,
+      "model": [
+        "136",
+        0
+      ]
+    },
+    "class_type": "BasicScheduler",
+    "_meta": {
+      "title": "基本调度器"
+    }
+  },
+  "129": {
+    "inputs": {
+      "noise": [
+        "131",
+        0
+      ],
+      "guider": [
+        "130",
+        0
+      ],
+      "sampler": [
+        "127",
+        0
+      ],
+      "sigmas": [
+        "128",
+        0
+      ],
+      "latent_image": [
+        "158",
+        0
+      ]
+    },
+    "class_type": "SamplerCustomAdvanced",
+    "_meta": {
+      "title": "自定义采样器（高级）"
+    }
+  },
+  "130": {
+    "inputs": {
+      "model": [
+        "136",
+        0
+      ],
+      "conditioning": [
+        "145",
+        0
+      ]
+    },
+    "class_type": "BasicGuider",
+    "_meta": {
+      "title": "基本引导器"
+    }
+  },
+  "131": {
+    "inputs": {
+      "noise_seed": 258027117257533
+    },
+    "class_type": "RandomNoise",
+    "_meta": {
+      "title": "随机噪波"
+    }
+  },
+  "132": {
+    "inputs": {
+      "fps": 24,
+      "bit_depth": 8,
+      "color_space": "sRGB",
+      "codec": "none",
+      "images": [
+        "126",
+        0
+      ],
+      "audio": [
+        "125",
+        0
+      ]
+    },
+    "class_type": "CreateVideo",
+    "_meta": {
+      "title": "创建视频"
+    }
+  },
+  "134": {
+    "inputs": {
+      "expression": "max(5, round(a * 24)) + (5 - (max(5, round(a * 24)) % 17)) % 17",
+      "values.a": [
+        "135",
+        0
+      ]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {
+      "title": "数学表达式"
+    }
+  },
+  "135": {
+    "inputs": {
+      "value": 5
+    },
+    "class_type": "PrimitiveFloat",
+    "_meta": {
+      "title": "(Input:duration) Duration"
+    }
+  },
+  "136": {
+    "inputs": {
+      "unet_name": "minimax_h3_ref2va_pruned-Q4_K_M.gguf"
+    },
+    "class_type": "UnetLoaderGGUF",
+    "_meta": {
+      "title": "UNET Loader (GGUF) ⚡"
+    }
+  },
+  "137": {
+    "inputs": {
+      "clip_name": "qwen3-vl-8b-heretic-1.3.0_fp8_e4m3fn.safetensors",
+      "type": "boogu",
+      "projection": "mmh3-8b-ClipProj-v3.1.safetensors"
+    },
+    "class_type": "CCTechClipProjLoader",
+    "_meta": {
+      "title": "Text Encoder 8B (boogu)"
+    }
+  },
+  "145": {
+    "inputs": {
+      "prompt": [
+        "9900",
+        0
+      ],
+      "width": [
+        "115",
+        0
+      ],
+      "height": [
+        "115",
+        1
+      ],
+      "length": [
+        "134",
+        1
+      ],
+      "ref_image_size": "match",
+      "clip": [
+        "137",
+        0
+      ],
+      "vae": [
+        "123",
+        0
+      ],
+      "audio_vae": [
+        "124",
+        0
+      ],
+      "ref_images.ref_image_0": [
+        "149",
+        0
+      ],
+      "ref_videos.ref_video_0": [
+        "152",
+        0
+      ],
+      "ref_video_audios.ref_video_audio_0": [
+        "152",
+        1
+      ],
+      "ref_audios.ref_audio_0": [
+        "153",
+        0
+      ]
+    },
+    "class_type": "MiniMaxH3ReferenceToVideo",
+    "_meta": {
+      "title": "MiniMax H3 参考转视频"
+    }
+  },
+  "149": {
+    "inputs": {
+      "image": ""
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "(Input:image) Ref Image 1"
+    }
+  },
+  "152": {
+    "inputs": {
+      "video": [
+        "156",
+        0
+      ]
+    },
+    "class_type": "GetVideoComponents",
+    "_meta": {
+      "title": "获取视频元素"
+    }
+  },
+  "153": {
+    "inputs": {
+      "audio": ""
+    },
+    "class_type": "LoadAudio",
+    "_meta": {
+      "title": "(Input:audio) Ref Audio 1"
+    }
+  },
+  "156": {
+    "inputs": {
+      "file": "",
+      "video-preview": ""
+    },
+    "class_type": "LoadVideo",
+    "_meta": {
+      "title": "(Input:video) Ref Video 1"
+    }
+  },
+  "157": {
+    "inputs": {
+      "latent": [
+        "129",
+        0
+      ]
+    },
+    "class_type": "ForceUnloadBeforeDecode",
+    "_meta": {
+      "title": "Force Unload Before Decode"
+    }
+  },
+  "158": {
+    "inputs": {
+      "latent": [
+        "145",
+        1
+      ]
+    },
+    "class_type": "ForceUnloadBeforeDecode",
+    "_meta": {
+      "title": "Force Unload Before Decode"
+    }
+  },
+  "9900": {
+    "inputs": {
+      "value": ""
+    },
+    "class_type": "PrimitiveStringMultiline",
+    "_meta": {
+      "title": "(Input:prompt) Prompt"
+    }
+  }
+}

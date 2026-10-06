@@ -1,0 +1,124 @@
+[32m[INFO][0m setup plugin alembic.autogenerate.schemas
+[32m[INFO][0m setup plugin alembic.autogenerate.tables
+[32m[INFO][0m setup plugin alembic.autogenerate.types
+[32m[INFO][0m setup plugin alembic.autogenerate.constraints
+[32m[INFO][0m setup plugin alembic.autogenerate.defaults
+[32m[INFO][0m setup plugin alembic.autogenerate.comments
+[32m[INFO][0m setup plugin alembic.autogenerate.checkconstraint_byname
+[32m[INFO][0m Found comfy_kitchen backend hip: {'available': True, 'disabled': False, 'unavailable_reason': None, 'capabilities': ['adaln', 'apply_rope', 'apply_rope1', 'apply_rope1_', 'apply_rope_', 'apply_rope_split_half', 'apply_rope_split_half1', 'apply_rope_split_half1_', 'apply_rope_split_half_', 'convrot_w4a4_linear', 'dequantize_convrot_w4a4_weight', 'dequantize_int8_convrot_weight_dtype', 'dequantize_int8_simple_dtype', 'dequantize_per_tensor_fp8', 'dequantize_w4a8_int8_weight', 'gemv_awq_w4a16', 'int8_linear', 'na3d', 'quantize_and_rotate_rowwise', 'quantize_convrot_w4a4_weight', 'quantize_int8_convrot_weight', 'quantize_int8_rowwise', 'quantize_int8_tensorwise', 'quantize_per_tensor_fp8', 'quantize_svdquant_w4a4', 'quantize_w4a8_int8_weight', 'rms_adaln', 'rms_rope', 'rms_rope1', 'rms_rope1_', 'rms_rope_', 'rms_rope_split_half', 'rms_rope_split_half1', 'rms_rope_split_half1_', 'rms_rope_split_half_', 'scaled_mm_svdquant_w4a4', 'stochastic_rounding_fp8', 'w4a8_int8_linear']}
+[32m[INFO][0m Found comfy_kitchen backend eager: {'available': True, 'disabled': False, 'unavailable_reason': None, 'capabilities': ['adaln', 'apply_rope', 'apply_rope1', 'apply_rope1_', 'apply_rope_', 'apply_rope_split_half', 'apply_rope_split_half1', 'apply_rope_split_half1_', 'apply_rope_split_half_', 'convrot_w4a4_linear', 'dequantize_convrot_w4a4_weight', 'dequantize_int8_convrot_weight', 'dequantize_int8_convrot_weight_dtype', 'dequantize_int8_embedding', 'dequantize_int8_simple', 'dequantize_int8_simple_dtype', 'dequantize_mxfp8', 'dequantize_nvfp4', 'dequantize_per_tensor_fp8', 'dequantize_w4a8_int8_weight', 'gemv_awq_w4a16', 'int8_linear', 'na3d', 'prepare_int4_weight_for_int8_linear', 'quantize_and_rotate_rowwise', 'quantize_convrot_w4a4_weight', 'quantize_int8_convrot_weight', 'quantize_int8_rowwise', 'quantize_int8_tensorwise', 'quantize_mxfp8', 'quantize_nvfp4', 'quantize_per_tensor_fp8', 'quantize_svdquant_w4a4', 'quantize_w4a8_int8_weight', 'rms_adaln', 'rms_rope', 'rms_rope1', 'rms_rope1_', 'rms_rope_', 'rms_rope_split_half', 'rms_rope_split_half1', 'rms_rope_split_half1_', 'rms_rope_split_half_', 'rotate_int8_convrot_weight', 'scaled_mm_mxfp8', 'scaled_mm_nvfp4', 'scaled_mm_svdquant_w4a4', 'stochastic_rounding_fp8', 'w4a8_int8_linear']}
+[32m[INFO][0m Found comfy_kitchen backend triton: {'available': False, 'disabled': True, 'unavailable_reason': "ImportError: No module named 'triton'", 'capabilities': []}
+[32m[INFO][0m Found comfy_kitchen backend cuda: {'available': True, 'disabled': True, 'unavailable_reason': None, 'capabilities': ['adaln', 'apply_rope', 'apply_rope1', 'apply_rope1_', 'apply_rope_', 'apply_rope_split_half', 'apply_rope_split_half1', 'apply_rope_split_half1_', 'apply_rope_split_half_', 'convrot_w4a4_linear', 'dequantize_convrot_w4a4_weight', 'dequantize_int8_convrot_weight', 'dequantize_int8_convrot_weight_dtype', 'dequantize_int8_simple', 'dequantize_int8_simple_dtype', 'dequantize_nvfp4', 'dequantize_per_tensor_fp8', 'dequantize_w4a8_int8_weight', 'gemv_awq_w4a16', 'na3d', 'prepare_int4_weight_for_int8_linear', 'quantize_and_rotate_rowwise', 'quantize_convrot_w4a4_weight', 'quantize_int8_convrot_weight', 'quantize_int8_rowwise', 'quantize_int8_tensorwise', 'quantize_mxfp8', 'quantize_nvfp4', 'quantize_per_tensor_fp8', 'quantize_svdquant_w4a4', 'quantize_w4a8_int8_weight', 'rms_adaln', 'rms_rope', 'rms_rope1', 'rms_rope1_', 'rms_rope_', 'rms_rope_split_half', 'rms_rope_split_half1', 'rms_rope_split_half1_', 'rms_rope_split_half_', 'rotate_int8_convrot_weight', 'scaled_mm_svdquant_w4a4', 'stochastic_rounding_fp8', 'w4a8_int8_linear']}
+[32m[INFO][0m Checkpoint files will always be loaded safely.
+[32m[INFO][0m Total VRAM 24560 MB, total RAM 32667 MB
+[32m[INFO][0m pytorch version: 2.9.1+rocm7.2.1
+[32m[INFO][0m Set: torch.backends.cudnn.enabled = False for better AMD performance.
+[32m[INFO][0m AMD arch: gfx1100
+[32m[INFO][0m ROCm version: (7, 2)
+[32m[INFO][0m Set vram state to: NORMAL_VRAM
+[32m[INFO][0m Disabling smart memory management
+[32m[INFO][0m Device: cuda:0 AMD Radeon RX 7900 XTX : native
+[32m[INFO][0m Using async weight offloading with 2 streams
+[32m[INFO][0m Using pytorch attention
+[32m[INFO][0m Using Comfy Kitchen attention
+[32m[INFO][0m aimdo: src-win/cuda-detour.c:38:INFO:aimdo_setup_hooks: installing 6 hooks
+[32m[INFO][0m aimdo: src-win/shmem-detect.c:80:INFO:comfy-aimdo WDDM adapter match: AMD Radeon RX 7900 XTX runtime_luid=00000000:00012b73 dxgi_luid=00000000:00012b73
+[32m[INFO][0m aimdo: src/control.c:277:INFO:comfy-aimdo inited for GPU: AMD Radeon RX 7900 XTX (VRAM: 24560 MB)
+[32m[INFO][0m DynamicVRAM support detected and enabled
+[32m[INFO][0m Python version: 3.12.10 (tags/v3.12.10:0cc8128, Apr  8 2025, 12:21:36) [MSC v.1943 64 bit (AMD64)]
+[32m[INFO][0m ComfyUI version: 0.34.0
+[32m[INFO][0m comfy-aimdo version: 0.4.15
+[32m[INFO][0m comfy-kitchen version: 0.2.31
+[32m[INFO][0m comfyui-frontend-package version: 1.49.6
+[32m[INFO][0m comfyui-workflow-templates version: 0.11.48
+[32m[INFO][0m comfyui-embedded-docs version: 0.5.10
+[32m[INFO][0m comfy-kitchen version: 0.2.31
+[32m[INFO][0m comfy-aimdo version: 0.4.15
+[32m[INFO][0m [Prompt Server] web root: D:\localAI\ComfyUI-last\ComfyUI_windows_portable\python_embeded\Lib\site-packages\comfyui_frontend_package\static
+[32m[INFO][0m Asset seeder disabled
+[32m[INFO][0m No OpenGL_accelerate module loaded: No module named 'OpenGL_accelerate'
+[32m[INFO][0m [ClipProj] graph watch installed
+[32m[INFO][0m [ClipProj] unload hook installed
+[32m[INFO][0m ComfyUI-GGUF: Allowing full torch compile
+'sox' �����ڲ����ⲿ���Ҳ���ǿ����еĳ���
+���������ļ���
+[1m[33m[WARNING][0m SoX could not be found!
+
+    If you do not have SoX, proceed here:
+     - - - http://sox.sourceforge.net/ - - -
+
+    If you do (or think that you should) have SoX, double-check your
+    path variables.
+    
+[32m[INFO][0m Qwen3-TTS compat: restored 66 legacy token-id config default(s) that transformers 5.x no longer sets
+[32m[INFO][0m [KJ PreviewOverride] --disable-api-nodes blocks blob: video, using WebP for animated previews.
+[1m[33m[WARNING][0m KJNodes: PatchTritonVAE node could not be imported. PatchTritonVAE will be unavailable.
+Traceback (most recent call last):
+  File "D:\localAI\ComfyUI-last\ComfyUI_windows_portable\ComfyUI\custom_nodes\ComfyUI-KJNodes\nodes\triton_vae.py", line 10, in <module>
+    import triton
+ModuleNotFoundError: No module named 'triton'
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "D:\localAI\ComfyUI-last\ComfyUI_windows_portable\ComfyUI\custom_nodes\ComfyUI-KJNodes\__init__.py", line 386, in <module>
+    from .nodes.triton_vae import PatchTritonVAE
+  File "D:\localAI\ComfyUI-last\ComfyUI_windows_portable\ComfyUI\custom_nodes\ComfyUI-KJNodes\nodes\triton_vae.py", line 13, in <module>
+    raise ImportError("PatchTritonVAE requires triton (pip install triton, or triton-windows)") from e
+ImportError: PatchTritonVAE requires triton (pip install triton, or triton-windows)
+[32m[INFO][0m 
+Import times for custom nodes:
+[32m[INFO][0m    0.0 seconds: D:\localAI\ComfyUI-last\ComfyUI_windows_portable\ComfyUI\custom_nodes\websocket_image_save.py
+[32m[INFO][0m    0.0 seconds: D:\localAI\ComfyUI-last\ComfyUI_windows_portable\ComfyUI\custom_nodes\ComfyUI-ForceUnloadBeforeDecode
+[32m[INFO][0m    0.0 seconds: D:\localAI\ComfyUI-last\ComfyUI_windows_portable\ComfyUI\custom_nodes\ComfyUI-ClipProj
+[32m[INFO][0m    0.3 seconds: D:\localAI\ComfyUI-last\ComfyUI_windows_portable\ComfyUI\custom_nodes\ComfyUI-KJNodes
+[32m[INFO][0m    7.8 seconds: D:\localAI\ComfyUI-last\ComfyUI_windows_portable\ComfyUI\custom_nodes\ComfyUI-GGUF-Loader
+[32m[INFO][0m 
+[32m[INFO][0m Context impl SQLiteImpl.
+[32m[INFO][0m Will assume non-transactional DDL.
+[32m[INFO][0m Disabling intermediate node cache.
+[32m[INFO][0m Starting server
+
+[32m[INFO][0m To see the GUI go to: http://127.0.0.1:8188
+[32m[INFO][0m got prompt
+[32m[INFO][0m VAE load device: cuda:0, offload device: cpu, dtype: torch.float32
+[32m[INFO][0m VAE load device: cuda:0, offload device: cpu, dtype: torch.float16
+[32m[INFO][0m Found quantization metadata version 1
+[32m[INFO][0m Using MixedPrecisionOps for text encoder
+[32m[INFO][0m CLIP/text encoder model load device: cuda:0, offload device: cpu, current: cpu, dtype: torch.float16
+[32m[INFO][0m [ClipProj] mmh3-8b-ClipProj-v3.1.safetensors | tap 24 | 4096 -> 5120 | cos_test 0.7300
+[32m[INFO][0m Requested to load BooguTEModel_
+[32m[INFO][0m Model BooguTEModel_ prepared for dynamic VRAM loading. 10097MB Staged. 0 patches attached. Force pre-loaded 255 weights: 849 KB.
+D:\localAI\ComfyUI-last\ComfyUI_windows_portable\ComfyUI\comfy\ops.py:95: UserWarning: Using AOTriton backend for Efficient Attention forward... (Triggered internally at C:/b/pytorch/aten/src/ATen/native/transformers/hip/attention.hip:1452.)
+  return torch.nn.functional.scaled_dot_product_attention(q, k, v, *args, **kwargs)
+[1m[33m[WARNING][0m Warning: This gguf model file is loaded in compatibility mode 'sd.cpp' [arch:minimax_h3]
+[32m[INFO][0m gguf qtypes: F32 (10), F16 (102), BF16 (212), Q4_K (208)
+[32m[INFO][0m model weight dtype torch.bfloat16, manual cast: None
+[32m[INFO][0m model_type FLOW_AV
+[32m[INFO][0m Requested to load MiniMaxH3
+[32m[INFO][0m loaded completely; 14753.38 MB usable, 11186.65 MB loaded, full load: True
+  0%|          | 0/20 [00:00<?, ?it/s]  0%|          | 0/20 [00:00<?, ?it/s,   Model Initializing ...  ]  0%|          | 0/20 [00:16<?, ?it/s,  Model Initialization complete!  ]  5%|▌         | 1/20 [00:16<05:06, 16.11s/it,  Model Initialization complete!  ]  5%|▌         | 1/20 [00:31<05:06, 16.11s/it]                                    10%|█         | 2/20 [00:31<04:45, 15.86s/it] 15%|█▌        | 3/20 [00:47<04:23, 15.52s/it] 20%|██        | 4/20 [01:02<04:10, 15.63s/it] 25%|██▌       | 5/20 [01:18<03:55, 15.69s/it] 30%|███       | 6/20 [01:34<03:40, 15.75s/it] 35%|███▌      | 7/20 [01:50<03:25, 15.80s/it] 40%|████      | 8/20 [02:05<03:10, 15.85s/it] 45%|████▌     | 9/20 [02:21<02:54, 15.90s/it] 50%|█████     | 10/20 [02:37<02:39, 15.95s/it] 55%|█████▌    | 11/20 [02:53<02:24, 16.00s/it] 60%|██████    | 12/20 [03:09<02:08, 16.02s/it] 65%|██████▌   | 13/20 [03:25<01:52, 16.07s/it] 70%|███████   | 14/20 [03:41<01:36, 16.08s/it] 75%|███████▌  | 15/20 [03:58<01:20, 16.10s/it] 80%|████████  | 16/20 [04:14<01:04, 16.13s/it] 85%|████████▌ | 17/20 [04:30<00:48, 16.14s/it] 90%|█████████ | 18/20 [04:46<00:32, 16.17s/it] 95%|█████████▌| 19/20 [05:02<00:16, 16.17s/it]100%|██████████| 20/20 [05:18<00:00, 16.11s/it]100%|██████████| 20/20 [05:18<00:00, 15.94s/it]
+[32m[INFO][0m Requested to load MiniMaxH3AudioVAE
+[32m[INFO][0m Model MiniMaxH3AudioVAE prepared for dynamic VRAM loading. 576MB Staged. 0 patches attached. Force pre-loaded 401 weights: 539 KB.
+[32m[INFO][0m Requested to load MiniMaxH3VideoVAE
+[32m[INFO][0m Model MiniMaxH3VideoVAE prepared for dynamic VRAM loading. 4965MB Staged. 0 patches attached. Force pre-loaded 128 weights: 348 KB.
+[32m[INFO][0m [32mPrompt executed in 449.22 seconds[0m
+[32m[INFO][0m got prompt
+[32m[INFO][0m VAE load device: cuda:0, offload device: cpu, dtype: torch.float32
+[32m[INFO][0m VAE load device: cuda:0, offload device: cpu, dtype: torch.float16
+[32m[INFO][0m CLIP/text encoder model load device: cuda:0, offload device: cpu, current: cpu, dtype: torch.float16
+[32m[INFO][0m [ClipProj] mmh3-8b-ClipProj-v3.1.safetensors | tap 24 | 4096 -> 5120 | cos_test 0.7300
+[32m[INFO][0m Requested to load BooguTEModel_
+[32m[INFO][0m Model BooguTEModel_ prepared for dynamic VRAM loading. 16721MB Staged. 0 patches attached. Force pre-loaded 255 weights: 849 KB.
+[1m[33m[WARNING][0m Warning: This gguf model file is loaded in compatibility mode 'sd.cpp' [arch:minimax_h3]
+[32m[INFO][0m gguf qtypes: F32 (10), F16 (102), BF16 (212), Q4_K (208)
+[32m[INFO][0m model weight dtype torch.bfloat16, manual cast: None
+[32m[INFO][0m model_type FLOW_AV
+[32m[INFO][0m Requested to load MiniMaxH3
+[32m[INFO][0m loaded completely; 14542.38 MB usable, 11186.65 MB loaded, full load: True
+  0%|          | 0/20 [00:00<?, ?it/s]  0%|          | 0/20 [00:00<?, ?it/s,   Model Initializing ...  ]  0%|          | 0/20 [00:15<?, ?it/s,  Model Initialization complete!  ]  5%|▌         | 1/20 [00:15<04:58, 15.69s/it,  Model Initialization complete!  ]  5%|▌         | 1/20 [00:31<04:58, 15.69s/it]                                    10%|█         | 2/20 [00:31<04:43, 15.76s/it] 15%|█▌        | 3/20 [00:47<04:29, 15.83s/it] 20%|██        | 4/20 [01:03<04:15, 15.95s/it] 25%|██▌       | 5/20 [01:19<04:00, 16.03s/it] 30%|███       | 6/20 [01:35<03:45, 16.08s/it] 35%|███▌      | 7/20 [01:51<03:29, 16.15s/it] 40%|████      | 8/20 [02:07<03:14, 16.20s/it] 45%|████▌     | 9/20 [02:23<02:58, 16.22s/it] 50%|█████     | 10/20 [02:40<02:42, 16.29s/it] 55%|█████▌    | 11/20 [02:56<02:26, 16.31s/it] 60%|██████    | 12/20 [03:12<02:10, 16.27s/it] 65%|██████▌   | 13/20 [03:29<01:54, 16.30s/it] 70%|███████   | 14/20 [03:45<01:38, 16.35s/it] 75%|███████▌  | 15/20 [04:01<01:21, 16.39s/it] 80%|████████  | 16/20 [04:18<01:05, 16.42s/it] 85%|████████▌ | 17/20 [04:34<00:49, 16.44s/it] 90%|█████████ | 18/20 [04:51<00:32, 16.45s/it] 95%|█████████▌| 19/20 [05:07<00:16, 16.48s/it]100%|██████████| 20/20 [05:24<00:00, 16.48s/it]100%|██████████| 20/20 [05:24<00:00, 16.21s/it]
+[32m[INFO][0m Requested to load MiniMaxH3AudioVAE
+[32m[INFO][0m Model MiniMaxH3AudioVAE prepared for dynamic VRAM loading. 576MB Staged. 0 patches attached. Force pre-loaded 401 weights: 539 KB.
+[32m[INFO][0m Requested to load MiniMaxH3VideoVAE
+[32m[INFO][0m Model MiniMaxH3VideoVAE prepared for dynamic VRAM loading. 4965MB Staged. 0 patches attached. Force pre-loaded 128 weights: 348 KB.
+[32m[INFO][0m [32mPrompt executed in 441.72 seconds[0m

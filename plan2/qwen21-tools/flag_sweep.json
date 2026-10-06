@@ -1,0 +1,77 @@
+[
+  {
+    "label": "B",
+    "bat": "run_amd_gpu_fp16_mid_only.bat",
+    "note": "keep fp16-intermediates, drop ck-attention",
+    "flags": {
+      "fp16_intermediates": true,
+      "ck_attention": false,
+      "force_upcast": false
+    },
+    "status": "success",
+    "files": [
+      "SWEEP_B_T82_00001.png"
+    ],
+    "seconds": 105
+  },
+  {
+    "label": "A",
+    "bat": "run_amd_gpu_ck_attn_only.bat",
+    "note": "keep ck-attention, drop fp16-intermediates",
+    "flags": {
+      "fp16_intermediates": false,
+      "ck_attention": true,
+      "force_upcast": false
+    },
+    "status": "success",
+    "files": [
+      "SWEEP_A_T82_00001.png"
+    ],
+    "seconds": 99
+  },
+  {
+    "label": "D",
+    "bat": "run_amd_gpu_ck_fp16_upcast.bat",
+    "note": "keep both, add --force-upcast-attention",
+    "flags": {
+      "fp16_intermediates": true,
+      "ck_attention": true,
+      "force_upcast": true
+    },
+    "status": "success",
+    "files": [
+      "SWEEP_D_T82_00001.png"
+    ],
+    "seconds": 99
+  },
+  {
+    "label": "BASE",
+    "bat": "run_amd_gpu_enable_dynamic_vram.bat",
+    "note": "original config, control: expected dirty",
+    "flags": {
+      "fp16_intermediates": true,
+      "ck_attention": true,
+      "force_upcast": false
+    },
+    "status": "success",
+    "files": [
+      "SWEEP_BASE_T82_00001.png"
+    ],
+    "seconds": 99
+  },
+  {
+    "label": "C",
+    "bat": "run_amd_gpu_default_attention.bat",
+    "note": "neither flag, control: expected clean",
+    "flags": {
+      "fp16_intermediates": false,
+      "ck_attention": false,
+      "force_upcast": false
+    },
+    "status": "success",
+    "files": [
+      "SWEEP_C_T82_00001.png"
+    ],
+    "seconds": 105
+  }
+]
