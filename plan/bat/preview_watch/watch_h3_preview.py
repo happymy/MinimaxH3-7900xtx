@@ -7,8 +7,8 @@
       1. 检测任务开始/结束（轮询 GET /queue 的 queue_running / queue_pending）
       2. 任务采样期间轮询 %TEMP%\\iw-preview-* 目录，实时打印内核落盘的真实预览帧
          （这些帧是采样中途用工作流的 video VAE 解码 latent 得到的成片分辨率真帧，不是
-          34x60 小图；第一批在 step 1 触发，**附带把 DiT 提前卸载 —— 见下方
-          「【step 1 首批预览的附加效果】」**，之后每 total_steps//4 步一批，
+          34x60 小图；第一批在 step 0 触发，**附带把 DiT 提前卸载 —— 见下方
+          「【step 0 首批预览的附加效果】」**，之后每 total_steps//4 步一批，
           20 步任务出 4 批，每批 6 帧）
       3. 可选 --collect 把帧复制到指定目录统一留底
       4. 可选 --open 在首个预览目录出现时用资源管理器打开一次
@@ -21,11 +21,13 @@
     因此内核链路需处于已部署状态，且任务请求的 extra_data.preview_file=true
     （项目侧默认 true；手动 POST /prompt 若不传则 ComfyUI 默认 true）。
 
-【step 1 首批预览的附加效果：提前卸载 DiT】(2026-10-07 补记):
-    链路: step 1 触发第一批预览 -> video VAE decode -> ComfyUI 的 free_memory
+【step 0 首批预览的附加效果：提前卸载 DiT】(2026-10-07 补记):
+    链路: step 0 触发第一批预览 -> video VAE decode -> ComfyUI 的 free_memory
     -> 动态 DiT 被卸载、压到低水位 -> 后续采样再按需换回。
     即「借首批预览的解码动作，在采样最早期就把 DiT 卸一次」，不是本脚本
     发出的卸载请求（本脚本仍是零侵入，见上）。
+    2026-10-07 更新：触发点从 step 1 提前到 step 0（内核 latent_preview.py
+    条件改为 step % every == 0），卸载时机再早一个采样步。
 
     为什么值得这么做（实机经验）:
       1. 反复加载模型的耗时 << 爆显存的代价。显存一旦被顶爆，--enable-dynamic-vram
@@ -43,7 +45,7 @@
 【内核修改清单】本次功能改动了以下文件（相对 ComfyUI_windows_portable\\，均为 UTF-8）:
   1. ComfyUI\\latent_preview.py          —— 帧预览主战场：模块级状态（_frame_preview_
      enabled / vae / dir / count）、_save_frame_preview() 解码中途 x0 落盘、采样 callback
-     挂载（step 1 额外触发第一批 + 每 total_steps//4 步一批）、set_frame_preview_enabled/
+     挂载（step % every == 0，即 step 0 首批 + 每 total_steps//4 步一批）、set_frame_preview_enabled/
      vae() 开关与注册。
   2. ComfyUI\\comfy_extras\\nodes_minimax_h3.py —— H3 节点注册视频 VAE：
      MiniMaxH3ImageToVideo.execute（约 142 行）与 MiniMaxH3ReferenceToVideo.execute
