@@ -154,7 +154,7 @@ plan\API_workflows\未测试\final\
 | `extract_frames` | 1 | 工具：抽首/中/末帧 → PNG | 供 ref2va 造参考图 |
 | `qc_frames` | 1 | 工具：质检抽帧 + contact sheet | 配合 `vision-deepseek` 识图 |
 | `free_vram` | 1 | 工具：调 ComfyUI `/free` 卸载模型、释放 Dynamic VRAM 残留 | 无 TE 变体；`--status` / `--interval N` / `--no-verify` |
-| `preview_watch` | 1 | 工具：H3 生成中**实时预览帧监视器**（纯旁观，不干预生成） | 无 TE 变体；**需先给 ComfyUI 内核打补丁**，见 §6.7 |
+| `preview_watch` | 1 | 工具：H3 生成中**实时预览帧监视器**（纯旁观，不干预生成）；`step 1` 首批预览**顺带把 DiT 卸到低水位** | 无 TE 变体；**需先给 ComfyUI 内核打补丁**，见 §6.7 |
 
 每个生成/工具目录都含 `gen_*.py` + `gen_*.bat`（Windows 入口），**例外 `free_vram\` 是 `free_vram.py` + `free_vram.bat`、`preview_watch\` 是 `watch_h3_preview.py` + `watch_h3_preview.bat`**（都不走 `gen_` 前缀，前者不生成内容，后者不是生成器）。
 其中 **8 个有 `prompt.txt`**（`multisegment*` 3 个、`ref2va*` 3 个、`scenes`、`scenes_ref`）；
@@ -303,6 +303,23 @@ OPENER.open(req, timeout=15)
 实机权威确认（2026-10-07 `git status`，本机 ComfyUI 是 git 仓库）：**本地改动恰好只有这 3 个文件**，与 `frame_preview_kernel.patch` 的 `diff --git` 清单逐一对齐。
 
 覆盖范围：`plan\molbal_workflows\final\` 的 15 个视频工作流（i2v/t2v 共用 `MiniMaxH3ImageToVideo`，ref2v 走 `ReferenceToVideo`），**未改动任何工作流文件**。链路需 `extra_data.preview_file=true`（项目侧默认 true；手动 `POST /prompt` 不传则 ComfyUI 默认 true）。
+
+#### 隐藏的附加效果：step 1 首批预览 = 顺手卸载 DiT（2026-10-07 补记）
+
+链路：`step 1` 触发第一批预览 → `video VAE decode` → ComfyUI 自带的 `free_memory` → **动态 DiT 在采样最早期就被卸载、压到低水位** → 后续采样按需换回。补丁里对应的注释就在 `latent_preview.py` 的采样 callback 上：
+
+```python
+# step 1 额外触发第一批预览：借此把 VAE decode 自带的 free_memory 提前到采样初期，
+# 让动态 DiT 以低水位按需运行（--enable-dynamic-vram 下反复加载 ≪ 内存 swap）。
+```
+
+为什么值得这么做（**实机经验，非推测**）：
+
+- **反复加载模型的耗时 ≪ 爆显存的代价**。显存一旦被顶爆，`--enable-dynamic-vram` **不会崩进程**，而是把数据退到系统内存（页面文件 / swap）走，那一段渲染**非常慢** —— 宁可让 DiT 反复进出，也不让它把显存顶满
+- **长提示词、长视频时长时最明显**：这两类任务采样期显存占用最高（文本张量大 / 帧多 latent 大），提前卸载的收益最大
+- **真正的风险是整机卡死，不是报错**：`--enable-dynamic-vram` 下「显存爆了」不等于出错，只有内存也被耗尽时操作系统才卡死 → 提前卸载是**防卡死**，不是防报错
+
+本脚本对此**零贡献也零破坏**：卸载由内核 `VAE decode` 触发，`watch_h3_preview.py` 不发任何卸载请求，零侵入性质不变。同一份说明已写进脚本 docstring 的「【step 1 首批预览的附加效果：提前卸载 DiT】」小节。
 
 **换机部署顺序**：装好官方 `0.38.0` → `git apply` 补丁（或按 `official-0.38.0-to-current.patch` 复刻基线后再打）→ **重启 ComfyUI 生效** → 再跑 `watch_h3_preview.bat`。内核没打补丁时脚本仍能跑，只是永远等不到 `iw-preview-*` 目录。
 

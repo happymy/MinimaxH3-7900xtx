@@ -209,6 +209,14 @@ python_embeded\python.exe -m pip install opencv-python-headless -i https://mirro
 
 **影响范围**：`plan\molbal_workflows\final\` 的 15 个视频工作流（i2v/t2v 共用 `MiniMaxH3ImageToVideo`，ref2v 走 `ReferenceToVideo`），**工作流文件本身零改动**；请求侧需 `extra_data.preview_file=true`（项目侧默认 true，手动 `POST /prompt` 不传则 ComfyUI 默认 true）。Qwen-Image 线不受影响。
 
+**附带收益：`step 1` 首批预览 = 顺手卸载 DiT**（2026-10-07 补记，实机经验）—— `step 1` 触发首批预览 → `video VAE decode` → ComfyUI 自带的 `free_memory` → **动态 DiT 在采样最早期就被卸载到低水位**，后续按需换回。逻辑依据：
+
+- **反复加载模型的耗时 ≪ 爆显存的代价**：显存被顶爆时 `--enable-dynamic-vram` **不崩进程**，而是把数据退到系统内存（页面文件 / swap）走，那段渲染**非常慢** → 宁可让 DiT 反复进出，也不让它把显存顶满
+- **长提示词、长视频时长时最明显**（采样期显存占用最高），收益最大
+- **风险是整机卡死而非报错**：显存爆了不等于出错，只有内存也耗尽时操作系统才卡死 → 提前卸载是**防卡死**不是防报错
+
+详见 `plan\README.md §6.7` 与 `watch_h3_preview.py` docstring；脚本本身零侵入，不发任何卸载请求。
+
 ---
 
 ## 五、工作流（plan/molbal_workflows/final/）
@@ -268,7 +276,7 @@ op 系列（官方 prompt 合规版，§11.9）：T2V/I2V 的 `length` 已从 73
 | `extract_frames\` | 工具：抽 **首/中/末** 三帧 PNG（`--mid` 调中间帧，防覆盖） | 无 TE 变体 |
 | `qc_frames\` | 工具：QC 抽帧 + contact sheet（配 `vision-deepseek` 识图） | 无 TE 变体 |
 | `free_vram\` | 工具：调 ComfyUI `/free` 卸载模型、释放 Dynamic VRAM 残留（§八） | 无 TE 变体 |
-| `preview_watch\` | 工具：H3 生成中**实时预览帧监视器**，轮询 `/queue` + `%TEMP%\iw-preview-*` 打印内核落盘的真帧 | 无 TE 变体；**需先给内核打补丁**，见 §4.6 |
+| `preview_watch\` | 工具：H3 生成中**实时预览帧监视器**，轮询 `/queue` + `%TEMP%\iw-preview-*` 打印内核落盘的真帧；`step 1` 首批预览**顺带把 DiT 卸到低水位**（§4.6） | 无 TE 变体；**需先给内核打补丁**，见 §4.6 |
 
 每个目录含 `gen_*.py` + `gen_*.bat`（Windows 入口），**例外 `free_vram\` = `free_vram.py` + `free_vram.bat`、`preview_watch\` = `watch_h3_preview.py` + `watch_h3_preview.bat`**。`prompt.txt` 随目录（交互模式优先读同目录，另有 `--prompt-file`，UTF-8/GBK 自动识别；`--prompt` 为单条、全部段复用）。输出重名自动追加 `_1/_2` 防覆盖。
 
@@ -311,6 +319,7 @@ op 系列（官方 prompt 合规版，§11.9）：T2V/I2V 的 `length` 已从 73
 - ❌ 把「两个启动脚本都带 `--enable-dynamic-vram`」误认成「两个一样」——**区别只在 ck 开关**
 - ⚠️ **`--enable-dynamic-vram` 的残留物理页会让同一条工作流越跑越慢**（十几分钟的活拖成几小时）。段间清理由多段脚本内置 `POST /free` 完成；段外与批跑用 `plan\bat\free_vram\free_vram.bat`（`--status` 看状态、`--interval 60` 挂旁边周期清、`--no-verify` 发完即走）。**`/free` 是异步 flag 端点**：HTTP 200 只代表 flag 已设，真正卸载在当前任务结束后的 worker 线程执行，所以必须用 `/system_stats` 的 `vram_free` 上升来验证；任务执行中调用安全（不会打断 prompt），但它**救不了单个任务内部变慢**，那种只能重启 ComfyUI
 - ⚠️ **脚本报 `404` / `Not Found`，但浏览器开 `127.0.0.1:8188` 明明正常 → 先查系统代理，别怀疑 ComfyUI**：本机代理 `127.0.0.1:26561` 的 `ProxyOverride` **不放行 loopback**，双击 bat 的环境里又**没有 `no_proxy`**，`urllib.getproxies()` 会读**注册表**代理，把发往 `127.0.0.1:8188` 的请求也交给代理 → 代理回 404。**2026-10-07 已加固 22 份 / 68 处**（`plan\bat\` 13 份 + `plan2\qwen21-tools\` 9 份）统一 `OPENER = build_opener(ProxyHandler({}))` 直连，空 handler 同时绕过环境变量与注册表两种来源。⚠️ **opencode / 终端 shell 里往往自带 `NO_PROXY`，会掩盖这个坑** —— 别拿会话里「能跑」当证据，要用双击 bat 的环境验。残留 2 份 8 处按拍板保留（`ck_ab_20261002\gen_h3_ck_ab.py` 是实测锚点，**重跑前须先加 `OPENER`**；`bak\` 退场副本不取用），详见 `plan\README.md §6.6`
+- 💡 **显存策略：宁可让 DiT 反复进出，也别让 `--enable-dynamic-vram` 把显存顶满**（实机经验）。显存爆了**不崩进程** —— 数据退到系统内存（页面文件 / swap）走，那一段渲染**非常慢**；只有内存也被耗尽时操作系统才卡死，所以真正的风险是**整机卡死**而非报错。**反复加载模型的耗时远小于爆显存的代价**，且**长提示词、长视频时长时最明显**（采样期显存占用最高）。`preview_watch` 的 `step 1` 首批预览正是利用这点：借 `VAE decode` 自带的 `free_memory` 在采样最早期就把 DiT 卸到低水位（§4.6、`plan\README.md §6.7`）
 - ⚠️ **`watch_h3_preview.bat` 一直等不到预览帧 → 先查内核补丁打没打**：预览帧由**内核**生成并落盘到 `%TEMP%\iw-preview-*`，`preview_watch\` 脚本零侵入、只在旁边监视，所以内核没改就永远没有输出。补丁与打步骤见 §4.6、`plan\README.md §6.7`；**改完必须重启 ComfyUI**。本机权威状态：ComfyUI 仓库跑 `git status`，应只有 `latent_preview.py` / `comfy_extras/nodes_minimax_h3.py` / `execution.py` 三个 `M`
 - ❌ 独立 nicolab28 `ComfyUI-ClipProj`（CCTech 内置同源，避免同名冲突）
 - ❌ `ComfyUI-MiniMaxH3-Cache`（全局 monkey-patch 破坏 H3 生成）
