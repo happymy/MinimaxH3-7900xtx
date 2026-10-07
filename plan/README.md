@@ -27,6 +27,7 @@ MiniMax H3 本机部署与实测的**全部资产地图**。**329 个文件 / 33
 > |---|---|---|
 > | `bat\分段归档\*.mp4` / `*.png`、`bat\<族>\h3_*.mp4` | 生成产物（22.26 MB），应由 `ComfyUI\output\` 承接 | 实机同名路径 |
 > | `bat\<族>\img\`、`bat\测试素材\` | 本机测试素材（7.7 MB） | 实机同名路径 |
+> | `bat\preview_watch - 副本\` | **旧版脚本快照**（`watch_h3_preview.py` 10,440 B，比现行 12,732 B 少 2 KB + 一份 `.pyc`），历史备份不入库 | 实机同名路径 |
 > | `ck_ab_20261002\` 的可视化 PNG / mp4 | 对照图与自检样本（6.44 MB）；**指标 json 与脚本已入库** | 实机同名路径 |
 > | `bat\_run_4b.log`、`*.err.log`（全目录） | 运行 stderr / 驱动日志，可重生成 | 实机同名路径 |
 > | `__pycache__\`、全部 `*.pyc` | 字节码，已被 `.gitignore` 排除 | — |
@@ -131,7 +132,7 @@ plan\API_workflows\未测试\final\
 
 ## 4. `bat\` 脚本族矩阵
 
-**4 个生成族 × 3 个文本编码器变体 = 12 个目录**，加 3 个工具目录（工具无变体），`bat\` 下共 15 个脚本目录。
+**4 个生成族 × 3 个文本编码器变体 = 12 个目录**，加 4 个工具目录（工具无变体），`bat\` 下共 16 个脚本目录。
 
 变体唯一差别是 `CCTechClipProjLoader` 节点的 `clip_name` / `type` / `projection` 三元组
 （`gen_*.py` docstring 里逐条列明，实测取自工作流 JSON 的 `widgets_values`）：
@@ -153,12 +154,13 @@ plan\API_workflows\未测试\final\
 | `extract_frames` | 1 | 工具：抽首/中/末帧 → PNG | 供 ref2va 造参考图 |
 | `qc_frames` | 1 | 工具：质检抽帧 + contact sheet | 配合 `vision-deepseek` 识图 |
 | `free_vram` | 1 | 工具：调 ComfyUI `/free` 卸载模型、释放 Dynamic VRAM 残留 | 无 TE 变体；`--status` / `--interval N` / `--no-verify` |
+| `preview_watch` | 1 | 工具：H3 生成中**实时预览帧监视器**（纯旁观，不干预生成） | 无 TE 变体；**需先给 ComfyUI 内核打补丁**，见 §6.7 |
 
-每个生成/工具目录都含 `gen_*.py` + `gen_*.bat`（Windows 入口），**唯一例外 `free_vram\` 是 `free_vram.py` + `free_vram.bat`**（不走 `gen_` 前缀，它不生成内容）。
+每个生成/工具目录都含 `gen_*.py` + `gen_*.bat`（Windows 入口），**例外 `free_vram\` 是 `free_vram.py` + `free_vram.bat`、`preview_watch\` 是 `watch_h3_preview.py` + `watch_h3_preview.bat`**（都不走 `gen_` 前缀，前者不生成内容，后者不是生成器）。
 其中 **8 个有 `prompt.txt`**（`multisegment*` 3 个、`ref2va*` 3 个、`scenes`、`scenes_ref`）；
-**7 个没有**（`extract_frames`、`qc_frames`、`free_vram`、`scenes_8b`、`scenes_8b_heretic`、`scenes_ref_8b`、`scenes_ref_8b_heretic`）。
+**8 个没有**（`extract_frames`、`qc_frames`、`free_vram`、`preview_watch`、`scenes_8b`、`scenes_8b_heretic`、`scenes_ref_8b`、`scenes_ref_8b_heretic`）。
 
-> 2026-10-07 起，12 份 `gen_*.py` 与 `free_vram.py` 全部改用模块级 `OPENER` 直连本地 API，`urllib.request.urlopen` 在 `bat\` 下已清零 —— 系统代理导致的 404 排查见 §6.6。
+> 2026-10-07 起，12 份 `gen_*.py`、`free_vram.py` 与 `preview_watch\watch_h3_preview.py` 全部改用模块级 `OPENER` 直连本地 API，`urllib.request.urlopen` 在 `bat\` 下已清零 —— 系统代理导致的 404 排查见 §6.6。
 
 `bat\归档\` 存官方三份 op 提示词（`prompt_t2v_op.txt` / `prompt_fl2va_op.txt` / `prompt_ref2va_op.txt`）+ 种子记录。
 （原 `dl_8b_heretic.log` 已于 2026-10-02 移入 `plan\归档\日志\`。）
@@ -206,7 +208,7 @@ bak noerror 0/1/2, bak RAW    ← 调试期快照
 
 ---
 
-## 6. 整理执行记录（6.1–6.5 于 2026-10-02，6.6 于 2026-10-07）
+## 6. 整理执行记录（6.1–6.5 于 2026-10-02，6.6–6.7 于 2026-10-07）
 
 ### 6.1 已归档运行残渣
 
@@ -278,6 +280,33 @@ OPENER.open(req, timeout=15)
 | `bak\gen_h3_multisegment.py` | 4 | §8 硬规矩「退场副本，不要取用」 | 不取用即可 |
 
 **回滚锚点**：22 份的改前字节全在 commit `8278ce9`，`git show 8278ce9:<path>` 可逐字节取回；D 盘与仓库 sha256 一致，仓库即锚点，故未留 `.bak`。
+
+### 6.7 已入库 `preview_watch\` 帧预览监视器（2026-10-07）
+
+`bat\preview_watch\` 是「视频生成中实时看预览帧」的旁观工具，本轮 4 文件入库：
+
+| 文件 | 大小 | 作用 |
+|---|---:|---|
+| `watch_h3_preview.py` | 12,732 B | 主脚本：轮询 `GET /queue` 判任务起止，再轮询 `%TEMP%\iw-preview-*` 打印内核落盘的真实预览帧（成片分辨率，非 34×60 小图）。**零侵入**，不干预生成、不重复解码、不改工作流 |
+| `watch_h3_preview.bat` | 80 B | Windows 入口（`chcp 65001` → `python watch_h3_preview.py %*`） |
+| `frame_preview_kernel.patch` | 8,271 B | **帧预览功能的本地改动权威版**，3 个文件 |
+| `official-0.38.0-to-current.patch` | 63,330 B | 官方 `0.38.0` tag → 当前内核的完整复刻 = 帧预览 3 文件 + 11 个 2026-09-30 之后的官方上游提交（14 文件） |
+
+> 不入库：`bat\preview_watch - 副本\`（旧版快照 10,440 B + `.pyc`，见 §1 未入库表）、`bat\测试素材\`。
+
+**⚠️ 用它必须先给 ComfyUI 内核打补丁** —— 预览帧由内核负责生成并落盘，本脚本只是在旁边盯着。内核侧改动清单（相对 `ComfyUI_windows_portable\`，均为 UTF-8）：
+
+1. `ComfyUI\latent_preview.py` —— 帧预览主战场：模块级状态、`_save_frame_preview()` 解码中途写盘
+2. `ComfyUI\comfy_extras\nodes_minimax_h3.py` —— H3 节点接上 `latent_preview` 回调
+3. `ComfyUI\execution.py` —— 任务起止与 `extra_data.preview_file` 传递
+
+实机权威确认（2026-10-07 `git status`，本机 ComfyUI 是 git 仓库）：**本地改动恰好只有这 3 个文件**，与 `frame_preview_kernel.patch` 的 `diff --git` 清单逐一对齐。
+
+覆盖范围：`plan\molbal_workflows\final\` 的 15 个视频工作流（i2v/t2v 共用 `MiniMaxH3ImageToVideo`，ref2v 走 `ReferenceToVideo`），**未改动任何工作流文件**。链路需 `extra_data.preview_file=true`（项目侧默认 true；手动 `POST /prompt` 不传则 ComfyUI 默认 true）。
+
+**换机部署顺序**：装好官方 `0.38.0` → `git apply` 补丁（或按 `official-0.38.0-to-current.patch` 复刻基线后再打）→ **重启 ComfyUI 生效** → 再跑 `watch_h3_preview.bat`。内核没打补丁时脚本仍能跑，只是永远等不到 `iw-preview-*` 目录。
+
+脚本自带 `OPENER` 直连（§6.6 同源），不依赖 `no_proxy`。
 
 ---
 

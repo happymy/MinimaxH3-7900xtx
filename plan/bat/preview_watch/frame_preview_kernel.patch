@@ -1,0 +1,212 @@
+diff --git a/comfy_extras/nodes_minimax_h3.py b/comfy_extras/nodes_minimax_h3.py
+index 1ad3c6a4..755d38b0 100644
+--- a/comfy_extras/nodes_minimax_h3.py
++++ b/comfy_extras/nodes_minimax_h3.py
+@@ -18,16 +18,17 @@ import comfy.audio
+ import nodes
+ import comfy.model_management
+ import comfy.model_prefetch
+ import comfy.model_sampling
+ import comfy.nested_tensor
+ import comfy.patcher_extension
+ import comfy.utils
+ import node_helpers
++import latent_preview
+ from comfy.ldm.minimax.model import FRAME_PER_TOKEN, FRAME_RESCALE
+ from comfy.ldm.minimax.vae import IMAGENET_MEAN
+ from comfy_api.latest import ComfyExtension, io
+ 
+ CANVAS_MULTIPLE = 32
+ BASE_SHORT_EDGE = 768
+ MAX_PIXELS = 768 * 1344
+ REF_IMAGE_SHORT_EDGE = 2048
+@@ -133,16 +134,17 @@ class MiniMaxH3ImageToVideo(io.ComfyNode):
+                 io.Image.Input("last_frame", optional=True),
+             ],
+             outputs=[io.Conditioning.Output(display_name="positive"), io.Latent.Output()],
+         )
+ 
+     @classmethod
+     def execute(cls, clip, vae, prompt, width, height, length,
+                 first_frame=None, last_frame=None) -> io.NodeOutput:
++        latent_preview.set_frame_preview_vae(vae)
+         latent, frame_count = _empty_av_latent(width, height, length)
+ 
+         images = []
+         keyframes = []
+         if first_frame is not None:
+             # geometry anchor: plain stretch to canvas
+             img = _resize(first_frame[:1], width, height, "disabled")
+             images.append(img)
+@@ -284,16 +286,17 @@ class MiniMaxH3ReferenceToVideo(io.ComfyNode):
+                         prefix="ref_audio_", min=0, max=3)),
+             ],
+             outputs=[io.Conditioning.Output(display_name="positive"), io.Latent.Output()],
+         )
+ 
+     @classmethod
+     def execute(cls, clip, prompt, width, height, length, ref_image_size="match", vae=None, audio_vae=None,
+                 ref_images=None, ref_videos=None, ref_video_audios=None, ref_audios=None) -> io.NodeOutput:
++        latent_preview.set_frame_preview_vae(vae)
+         latent, frame_count = _empty_av_latent(width, height, length)
+ 
+         ref_items = []   # for the tokenizer presentation, in request order
+         ref_blocks = []  # for the DiT payload, same order
+ 
+         for img in (ref_images or {}).values():
+             if img is None:
+                 continue
+diff --git a/execution.py b/execution.py
+index 448e3d29..af8908fa 100644
+--- a/execution.py
++++ b/execution.py
+@@ -16,17 +16,17 @@ from comfy.cli_args import args, get_console_log_level
+ import comfy.memory_management
+ import comfy.model_management
+ import comfy.model_patcher
+ import comfy.model_prefetch
+ import comfy.system_memory
+ import comfy_aimdo.model_vbar
+ from comfy.internal_logging import detail
+ 
+-from latent_preview import set_preview_method
++from latent_preview import set_frame_preview_enabled, set_frame_preview_vae, set_preview_method
+ import nodes
+ from comfy_execution.caching import (
+     BasicCache,
+     CacheKeySetID,
+     CacheKeySetInputSignature,
+     NullCache,
+     HierarchicalCache,
+     LRUCache,
+@@ -724,16 +724,18 @@ class PromptExecutor:
+             except Exception as e:
+                 _cache_logger.warning(f"Cache provider {provider.__class__.__name__} error on {event}: {e}")
+ 
+     def execute(self, prompt, prompt_id, extra_data={}, execute_outputs=[]):
+         asyncio.run(self.execute_async(prompt, prompt_id, extra_data, execute_outputs))
+ 
+     async def execute_async(self, prompt, prompt_id, extra_data={}, execute_outputs=[]):
+         set_preview_method(extra_data.get("preview_method"))
++        set_frame_preview_enabled(extra_data.get("preview_file", True))
++        set_frame_preview_vae(None)
+ 
+         nodes.interrupt_processing(False)
+         self.prompt_model_tracker.start()
+ 
+         if "client_id" in extra_data:
+             self.server.client_id = extra_data["client_id"]
+         else:
+             self.server.client_id = None
+diff --git a/latent_preview.py b/latent_preview.py
+index f5059400..0d37523c 100644
+--- a/latent_preview.py
++++ b/latent_preview.py
+@@ -1,21 +1,79 @@
++import os
++import tempfile
++import time
+ import torch
+ from PIL import Image
+ from comfy.cli_args import args, LatentPreviewMethod
+ from comfy.taesd.taesd import TAESD
+ from comfy.sd import VAE
+ import comfy.model_management
+ import comfy.model_prefetch
+ import folder_paths
+ import comfy.utils
+ import logging
+ 
+ default_preview_method = args.preview_method
+ 
++# H3 视频帧预览：采样中用工作流的 video VAE 解码真实帧落盘（MiniMaxH3ReferenceToVideo 注册 VAE，
++# execution 按任务设置开关）。文件存 %TEMP%\iw-preview-*，首个任务首帧弹一次资源管理器。
++_frame_preview_enabled = False
++_frame_preview_vae: VAE | None = None
++_frame_preview_dir: str | None = None
++_frame_preview_count = 0
++
++
++def set_frame_preview_enabled(enabled: bool):
++    global _frame_preview_enabled, _frame_preview_dir, _frame_preview_count
++    _frame_preview_enabled = enabled
++    _frame_preview_dir = None
++    _frame_preview_count = 0
++
++
++def set_frame_preview_vae(vae):
++    global _frame_preview_vae
++    _frame_preview_vae = vae
++
++
++def _frame_preview_dir_path() -> str:
++    global _frame_preview_dir
++    if _frame_preview_dir is None:
++        _frame_preview_dir = os.path.join(
++            tempfile.gettempdir(),
++            f"iw-preview-{time.strftime('%m%d%H%M%S')}-{os.getpid() % 100000:05d}",
++        )
++        os.makedirs(_frame_preview_dir, exist_ok=True)
++        os.startfile(_frame_preview_dir)
++    return _frame_preview_dir
++
++
++def _save_frame_preview(x0_video: torch.Tensor, step: int):
++    """解码中间 1/3 时间窗的真帧，均匀取 6 帧保存（约每秒 3 帧），封面本任务的唯一文件夹。"""
++    global _frame_preview_count
++    vae = _frame_preview_vae
++    t = x0_video.shape[2]
++    t0, t1 = t // 3, t - t // 3
++    if t1 - t0 < 5:
++        t0, t1 = 0, max(5, t)
++    frames = vae.decode(x0_video[:, :, t0:t1])
++    n = frames.shape[1]
++    dir_path = _frame_preview_dir_path()
++    for i in {round(k * (n - 1) / 5) for k in range(6)}:
++        img = frames[0, i]
++        img = img.float().clamp(0, 1).mul(255).to(dtype=torch.uint8)
++        Image.fromarray(img.cpu().numpy()).save(
++            os.path.join(dir_path, f"step{step:03d}_f{i:02d}.jpg"), quality=90
++        )
++    _frame_preview_count += 1
++    logging.info(
++        f"frame preview: step {step}/{_frame_preview_count} decoded {n} frames -> "
++        f"{dir_path} (t {t0}:{t1} of {t})"
++    )
++
+ MAX_PREVIEW_RESOLUTION = args.preview_size
+ VIDEO_TAES = ["taehv", "lighttaew2_2", "lighttaew2_1", "lighttaehy1_5", "taeltx_2", "taeh3"]
+ 
+ def preview_to_image(latent_image, do_scale=True):
+         if do_scale:
+             latents_ubyte = (((latent_image + 1.0) / 2.0).clamp(0, 1)  # change scale from -1..1 to 0..1
+                                 .mul(0xFF)  # to 0..255
+                                 )
+@@ -126,16 +184,27 @@ def prepare_callback(model, steps, x0_output_dict=None):
+ 
+     previewer = get_previewer(model.load_device, model.model.latent_format)
+ 
+     pbar = comfy.utils.ProgressBar(steps)
+     def callback(step, x0, x, total_steps):
+         if x0_output_dict is not None:
+             x0_output_dict["x0"] = x0
+ 
++        if x0.is_nested and _frame_preview_enabled and _frame_preview_vae is not None:
++            every = max(1, total_steps // 4)
++            # step 1 额外触发第一批预览：借此把 VAE decode 自带的 free_memory 提前到采样初期，
++            # 让动态 DiT 以低水位按需运行（--enable-dynamic-vram 下反复加载 ≪ 内存 swap）。
++            if step > 0 and (step == 1 or step % every == 0):
++                try:
++                    _save_frame_preview(x0.tensors[0], step)
++                except Exception:
++                    logging.warning("frame preview failed at step %d", step)
++                    set_frame_preview_enabled(False)
++
+         preview_bytes = None
+         if previewer:
+             if x0.is_nested:
+                 x0 = x0.tensors[0]
+             preview_bytes = previewer.decode_latent_to_preview_image(preview_format, x0)
+         pbar.update_absolute(step + 1, total_steps, preview_bytes)
+     return callback
+ 

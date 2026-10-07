@@ -1,0 +1,1450 @@
+diff --git a/app/assets/event_log.py b/app/assets/event_log.py
+index c6ef279..1cbeea6 100644
+--- a/app/assets/event_log.py
++++ b/app/assets/event_log.py
+@@ -84,16 +84,18 @@ ALLOWED_FIELDS: dict[str, Callable[[Any], bool]] = {
+     "stage": _one_of(STAGES),
+     "elapsed_ms": _is_count,
+     "created": _is_count,
+     "enriched": _is_count,
+     "skipped": _is_count,
+     "hash_failed": _is_count,
+     "enrich_failed": _is_count,
+     "permission_denied": _is_count,
++    "missing_marked_count": _is_count,
++    "recovered_count": _is_count,
+     "count": _is_count,
+     "error_type": _is_safe_string,
+     "hashing_enabled": _is_flag,
+     "site": _one_of(STAT_SITES),
+ }
+ 
+ _warned_call_sites: set[tuple[str, int]] = set()
+ 
+
+diff --git a/app/assets/scanner.py b/app/assets/scanner.py
+index 8340d6b..152caae 100644
+--- a/app/assets/scanner.py
++++ b/app/assets/scanner.py
+@@ -30,18 +30,20 @@ from app.assets.database.queries import (
+ from app.assets.database.models import Asset, AssetContent
+ from app.assets.helpers import path_prefix_matcher, sql_path_under_prefix, to_stored_hash
+ from app.assets.lifecycle import get_excluded_scan_roots
+ from app.assets.scanner_changes import (
+     clear_pending_verifications,
+     detect_content_change,
+     drain_pending_verifications,
+     live_contents_under_prefixes,
++    missing_content_ids_by_path,
+     pending_recovery_count,
+     recover_missing_content,
++    recover_missing_content_by_stat,
+ )
+ from app.assets.scanner_admission import (
+     PARTIAL_DOWNLOAD_EXTENSIONS as PARTIAL_DOWNLOAD_EXTENSIONS,
+     _WATCH_LIST as _WATCH_LIST,
+     _WatchEntry as _WatchEntry,
+     _should_skip_extension,
+     _two_stat_admit,
+     tick_watch_list as tick_watch_list,
+@@ -76,16 +78,18 @@ __all__ = [
+ # Temp is deliberately absent: it is wiped before every scan, so walking it finds nothing.
+ RootType = Literal["models", "input", "output"]
+ 
+ 
+ class _ScanProgress(Protocol):
+     hash_failed: int
+     enrich_failed: int
+     permission_denied: int
++    missing_marked: int
++    recovered: int
+ 
+     def mark_emitted(self, key: str) -> bool: ...
+ 
+ 
+ class SeedAssetSpec(TypedDict):
+ 
+     abs_path: str
+     # Walk-time diagnostics only: seeding persists the seed-time restat instead.
+@@ -152,17 +156,26 @@ def get_temp_prefixes() -> list[str]:
+     if temp_dir in get_excluded_scan_roots():
+         return []
+     return [temp_dir]
+ 
+ 
+ def collect_models_files() -> list[str]:
+     out: list[str] = []
+     for folder_name, bases, _exts in get_comfy_models_folders():
+-        rel_files = folder_paths.get_filename_list(folder_name) or []
++        try:
++            rel_files = folder_paths.get_filename_list(folder_name) or []
++        except OSError:
++            # The cached listing raises on every call once a folder it recorded has gone
++            # away; a fresh listing skips that folder and lists the rest.
++            try:
++                rel_files = folder_paths.get_filename_list_(folder_name)[0]
++            except OSError as e:
++                logging.warning("Asset scan: skipping model category %s, it can't be listed: %s", folder_name, e)
++                continue
+         for rel_path in rel_files:
+             if not all(is_visible(part) for part in Path(rel_path).parts):
+                 continue
+             abs_path = folder_paths.get_full_path(folder_name, rel_path)
+             if not abs_path:
+                 continue
+             abs_path = os.path.abspath(abs_path)
+             allowed = False
+@@ -186,91 +199,103 @@ def observe_references_on_filesystem(
+         (content.id, content.path, content.size_bytes, content.mtime_ns)
+         for content in live_contents_under_prefixes(session, prefixes)
+     ]
+     observations: list[_ReferenceObservation] = []
+     survivors: set[str] = set()
+     for content_id, path, size_bytes, mtime_ns in contents:
+         try:
+             stat_result = os.stat(path, follow_symlinks=True)
+-        except FileNotFoundError:
++        except (FileNotFoundError, NotADirectoryError):
+             observations.append(_ReferenceObservation(content_id, size_bytes, mtime_ns, None))
+         except PermissionError as e:
+             _log_scan_error("reference_stat", e)
+             if progress is not None:
+                 progress.permission_denied += 1
+             logging.debug("Permission denied accessing %s", path)
+         except OSError as e:
++            # An I/O error (a flaky network share, a stale handle) says nothing about
++            # whether the file still exists, so the row stays live, as _is_gone leaves it.
+             _log_scan_error("reference_stat", e)
+             logging.debug("OSError checking %s: %s", path, e)
+-            observations.append(_ReferenceObservation(content_id, size_bytes, mtime_ns, None))
+         else:
+             survivors.add(os.path.abspath(path))
+             if stat_result.st_mtime_ns != mtime_ns:
+                 observations.append(
+                     _ReferenceObservation(content_id, size_bytes, mtime_ns, stat_result)
+                 )
+     return observations, survivors
+ 
+ 
+ def apply_reference_observations(
+     session: Session, observations: list[_ReferenceObservation]
+-) -> None:
++) -> int:
++    """Apply the observations; returns how many rows were marked missing."""
++    marked = 0
+     for observation in observations:
+         content = session.get(AssetContent, observation.content_id)
+         # Skip a row another writer changed since it was observed; the next scan sees it afresh.
+         if (
+             content is None
+             or content.is_missing
+             or content.size_bytes != observation.size_bytes
+             or content.mtime_ns != observation.mtime_ns
+         ):
+             continue
+         if observation.stat_result is None:
+             mark_content_missing(session, content.id)
++            marked += 1
+             continue
+         detect_content_change(
+             session,
+             content,
+             observation.stat_result,
+             hashing_is_enabled=mode.hashing_enabled(),
+         )
++    return marked
+ 
+ 
+ def _sync_prefixes_in_write_txn(
+     prefixes: list[str], progress: _ScanProgress | None
+-) -> set[str]:
++) -> tuple[set[str], int]:
++    """Returns the surviving paths and how many rows were marked missing."""
+     with create_session() as session:
+         observations, survivors = observe_references_on_filesystem(
+             session, prefixes, progress
+         )
++    marked = 0
+     if observations:
+         with create_write_session() as session:
+-            apply_reference_observations(session, observations)
++            marked = apply_reference_observations(session, observations)
+             session.commit()
+-    return survivors
++    return survivors, marked
+ 
+ 
+ def sync_root_safely(
+     root: RootType, progress: _ScanProgress | None = None
+ ) -> set[str]:
+     """Sync a single root's references with the filesystem.
+ 
+     Returns survivors (existing paths) or empty set on failure.
+     """
+     try:
+-        return _sync_prefixes_in_write_txn(get_scan_prefixes_for_root(root), progress)
++        survivors, marked = _sync_prefixes_in_write_txn(
++            get_scan_prefixes_for_root(root), progress
++        )
+     except Exception as exc:
+         logging.exception("fast DB scan failed for %s: %s", root, exc)
+         emit(
+             "scanner.fast_scan_failed",
+             root=root,
+             error_type=error_type(exc),
+         )
+         return set()
++    if progress is not None:
++        progress.missing_marked += marked
++    return survivors
+ 
+ 
+ def sync_temp_references_safely(
+     progress: _ScanProgress | None = None,
+ ) -> None:
+     """Retire temp references whose file is gone; temp is never scanned, so nothing else stats them."""
+     try:
+         _sync_prefixes_in_write_txn(get_temp_prefixes(), progress)
+@@ -443,29 +468,34 @@ def _listing_verdict(
+         files, subdirs = listings[parent]
+         names = names_by_dir[parent] = {*files, *subdirs}
+     if name not in names:
+         return ListingVerdict.ABSENT
+     return ListingVerdict.LISTED if child == path else ListingVerdict.UNKNOWN
+ 
+ 
+ def mark_unlisted_references_missing_safely(
+-    root: RootType, observations: list[_ReferenceObservation]
++    root: RootType,
++    observations: list[_ReferenceObservation],
++    progress: _ScanProgress | None = None,
+ ) -> None:
+     """Retire rows whose file the listing lacks, through the same guarded write
+     sync_root applies to a row whose file has vanished."""
+     if not observations:
+         return
+     try:
+         with create_write_session() as session:
+-            apply_reference_observations(session, observations)
++            marked = apply_reference_observations(session, observations)
+             session.commit()
+     except Exception as exc:
+         logging.exception("fast DB scan failed for %s: %s", root, exc)
+         emit("scanner.fast_scan_failed", root=root, error_type=error_type(exc))
++        return
++    if progress is not None:
++        progress.missing_marked += marked
+ 
+ 
+ def list_output_for_rescan() -> ListingWalk:
+     """Walk the output root, listing every directory."""
+     return walk_listings(folder_paths.get_output_directory())
+ 
+ 
+ def build_asset_specs(
+@@ -542,16 +572,23 @@ def build_asset_specs(
+                 "job_id": None,
+             }
+         )
+         tag_pool.update(tags)
+ 
+     return specs, tag_pool, skipped
+ 
+ 
++@dataclass
++class SeedCounts:
++    """What one seed_asset_specs call did besides creating records."""
++
++    recovered: int = 0
++
++
+ class _SpecObservation(NamedTuple):
+     """A spec's file as seen before the write transaction opens.
+ 
+     ``snapshot`` is None when hashing is off, or when the file changed while being hashed.
+     """
+ 
+     stat_result: os.stat_result
+     snapshot: tuple[str, os.stat_result] | None
+@@ -582,19 +619,26 @@ def observe_asset_specs(specs: list[SeedAssetSpec]) -> dict[str, _SpecObservatio
+         observed[path] = _SpecObservation(stat_result, snapshot)
+     return observed
+ 
+ 
+ def seed_asset_specs(
+     session: Session,
+     specs: list[SeedAssetSpec],
+     observed: dict[str, _SpecObservation | None] | None = None,
++    counts: SeedCounts | None = None,
++    missing_ids_by_path: dict[str, list[str]] | None = None,
+ ) -> tuple[int, Exception | None]:
++    """``missing_ids_by_path`` is only used with hashing off. insert_asset_specs reads it
++    before its write transaction opens; when omitted, it is read here."""
+     if observed is None:
+         observed = observe_asset_specs(specs)
++    hashing_is_enabled = mode.hashing_enabled()
++    if not hashing_is_enabled and missing_ids_by_path is None:
++        missing_ids_by_path = missing_content_ids_by_path(session, _observed_paths(observed))
+     created = 0
+     first_error: Exception | None = None
+     # Counted, not gated through _ScanProgress.mark_emitted like its neighbours, because this
+     # function takes no progress object. Ungated, a restored archive of pre-epoch mtimes puts
+     # one event per file into the closed-vocabulary stream.
+     invalid_mtimes = 0
+     for spec in specs:
+         path = os.path.abspath(spec["abs_path"])
+@@ -605,22 +649,26 @@ def seed_asset_specs(
+                     continue
+                 stat_result = observation.stat_result
+                 if get_mtime_ns(stat_result) < 0:
+                     logging.warning(
+                         "Skipping asset with invalid mtime during scan: %s", path
+                     )
+                     invalid_mtimes += 1
+                     continue
+-                recovery = recover_missing_content(
+-                    session,
+-                    path,
+-                    observation.snapshot,
+-                    hashing_is_enabled=mode.hashing_enabled(),
+-                )
++                if hashing_is_enabled:
++                    recovery = recover_missing_content(
++                        session, path, observation.snapshot, hashing_is_enabled=True
++                    )
++                else:
++                    recovery = recover_missing_content_by_stat(
++                        session, path, stat_result, (missing_ids_by_path or {}).get(path, [])
++                    )
++                if recovery == "recovered" and counts is not None:
++                    counts.recovered += 1
+                 if recovery != "no_match":
+                     continue
+                 content, _inserted = create_content_reporting_insert(
+                     session,
+                     path=path,
+                     hash=None,
+                     size_bytes=stat_result.st_size,
+                     mtime_ns=get_mtime_ns(stat_result),
+@@ -655,35 +703,50 @@ def seed_asset_specs(
+         except Exception as error:
+             if first_error is None:
+                 first_error = error
+     if invalid_mtimes:
+         emit("scanner.invalid_mtime", count=invalid_mtimes)
+     return created, first_error
+ 
+ 
++def _observed_paths(observed: dict[str, _SpecObservation | None]) -> list[str]:
++    return [path for path, observation in observed.items() if observation is not None]
++
++
+ def insert_asset_specs(
+-    specs: list[SeedAssetSpec], _tag_pool: set[str]
++    specs: list[SeedAssetSpec],
++    _tag_pool: set[str],
++    progress: _ScanProgress | None = None,
+ ) -> tuple[int, Exception | None]:
+     if not specs:
+         return 0, None
+     observed = observe_asset_specs(specs)
++    missing_ids_by_path = None
++    if not mode.hashing_enabled():
++        with create_session() as sess:
++            missing_ids_by_path = missing_content_ids_by_path(sess, _observed_paths(observed))
++    counts = SeedCounts()
+     with create_write_session() as sess:
+-        created, first_error = seed_asset_specs(sess, specs, observed)
++        created, first_error = seed_asset_specs(
++            sess, specs, observed, counts, missing_ids_by_path
++        )
+         try:
+             sess.commit()
+         except Exception:
+             if first_error is None:
+                 raise
+             logging.exception("Failed to commit successful specs from failed asset batch")
+             try:
+                 sess.rollback()
+             except Exception:
+                 logging.exception("Failed to roll back asset batch after commit failure")
+             return 0, first_error
++        if progress is not None:
++            progress.recovered += counts.recovered
+         return created, first_error
+ 
+ 
+ def build_unenriched_candidates_statement(
+     prefixes: list[str],
+     compute_hashes: bool,
+     last_seen_id: str | None,
+     limit: int = 1000,
+
+diff --git a/app/assets/scanner_changes.py b/app/assets/scanner_changes.py
+index df257b8..bed169d 100644
+--- a/app/assets/scanner_changes.py
++++ b/app/assets/scanner_changes.py
+@@ -1,32 +1,34 @@
+ """Reconciles catalogued content against what is actually on disk: retiring rows
+ whose file is gone, splitting a row whose bytes changed, and recovering one
+-whose file came back. Recovery fires only when the returning file's hash
+-identifies exactly one missing row and no live row already occupies that path,
+-so a restored file can never leave two live rows describing one location.
++whose file came back. Recovery never fires for a path a live row already
++occupies, so a restored file can never leave two live rows describing one
++location. With hashing on, the returning file's hash must identify exactly one
++missing row; with hashing off, its size and modification time must match.
+ """
+ 
+ from __future__ import annotations
+ 
+ import os
+ from collections.abc import Iterable
+ from typing import Literal
+ 
+ import sqlalchemy as sa
+ from sqlalchemy.orm import Session
+ 
+-from app.assets.database.models import AssetContent
++from app.assets.database.models import Asset, AssetContent
+ from app.assets.database.queries.records import (
+     create_content,
+     create_record,
+     mark_content_missing,
+     unset_content_missing,
+ )
+ from app.assets.helpers import path_prefix_matcher, sql_path_under_prefix, to_stored_hash
++from app.assets.services.file_utils import get_mtime_ns
+ from app.assets.services.path_utils import compute_loader_path, get_name_and_tags_from_asset_path
+ from app.assets.services.snapshot_hash import snapshot_hash
+ 
+ _pending_verification_ids: list[str] = []
+ _pending_recovery_paths: list[str] = []
+ 
+ 
+ def clear_pending_verifications() -> None:
+@@ -102,16 +104,70 @@ def recover_missing_content(
+         return "no_match"
+     unset_content_missing(session, candidate.id)
+     candidate.hash = stored_hash
+     candidate.size_bytes = verified_stat.st_size
+     candidate.mtime_ns = verified_stat.st_mtime_ns
+     return "recovered"
+ 
+ 
++def missing_content_ids_by_path(session: Session, paths: list[str]) -> dict[str, list[str]]:
++    """The ids of the missing rows at ``paths``. No index serves a missing row's path, so
++    callers run this before their write transaction opens."""
++    by_path: dict[str, list[str]] = {}
++    for start in range(0, len(paths), 500):
++        chunk = paths[start : start + 500]
++        for content_id, path in session.execute(
++            sa.select(AssetContent.id, AssetContent.path).where(
++                AssetContent.is_missing.is_(True), AssetContent.path.in_(chunk)
++            )
++        ):
++            by_path.setdefault(path, []).append(content_id)
++    return by_path
++
++
++def recover_missing_content_by_stat(
++    session: Session,
++    path: str,
++    stat_result: os.stat_result,
++    candidate_ids: list[str],
++) -> Literal["recovered", "no_match"]:
++    """Hashing-off recovery: size and modification time are the identity a hashing-off
++    scan checks on a live row, so a returning file that matches them restores its row."""
++    mtime_ns = get_mtime_ns(stat_result)
++    candidates = [session.get(AssetContent, content_id) for content_id in candidate_ids]
++    matches = [
++        candidate
++        for candidate in candidates
++        if candidate is not None
++        and candidate.is_missing
++        and candidate.path == path
++        and (candidate.size_bytes, candidate.mtime_ns) == (stat_result.st_size, mtime_ns)
++        # A row whose records were all deleted while it was missing would come back
++        # live with nothing to show it, and hold the path so no scan ever lists it.
++        and session.scalar(sa.select(Asset.id).where(Asset.content_id == candidate.id).limit(1))
++        is not None
++    ]
++    if not matches:
++        return "no_match"
++    # "= 0", not "IS 0", so the partial live-path index serves it instead of a table scan.
++    occupied = session.scalar(
++        sa.select(AssetContent.id)
++        .where(AssetContent.path == path, AssetContent.is_missing == sa.false())
++        .limit(1)
++    )
++    if occupied is not None:
++        return "no_match"
++    # Several match only when earlier offline cycles left copies of one file behind;
++    # the newest is the one that was live last.
++    recovered = max(matches, key=lambda candidate: (candidate.created_at, candidate.id))
++    unset_content_missing(session, recovered.id)
++    return "recovered"
++
++
+ def is_path_under_prefixes(path: str, prefixes: list[str]) -> bool:
+     return path_prefix_matcher(prefixes)(path)
+ 
+ 
+ def split_content(session: Session, content: AssetContent, stat_result: os.stat_result, hash_value: str | None) -> AssetContent:
+     mark_content_missing(session, content.id)
+     name, tags = get_name_and_tags_from_asset_path(content.path)
+     replacement = create_content(
+
+diff --git a/app/assets/seeder.py b/app/assets/seeder.py
+index a538f4b..5b7f682 100644
+--- a/app/assets/seeder.py
++++ b/app/assets/seeder.py
+@@ -110,16 +110,20 @@ class _ScanState:
+ 
+     scanned: int = 0
+     total: int = 0
+     created: int = 0
+     skipped: int = 0
+     hash_failed: int = 0
+     enrich_failed: int = 0
+     permission_denied: int = 0
++    # Rows the fast scan marked missing because their file was not found. Pruning reports
++    # its own count, and temp retirement is routine, so neither is included.
++    missing_marked: int = 0
++    recovered: int = 0
+     cancel_stage: str | None = None
+     _emitted_keys: set[str] = field(default_factory=set)
+ 
+     def mark_emitted(self, key: str) -> bool:
+         """Return True the first call with `key` this scan, False every call after."""
+         if key in self._emitted_keys:
+             return False
+         self._emitted_keys.add(key)
+@@ -722,16 +726,18 @@ class _AssetSeeder:
+                 phase=phase.value,
+                 elapsed_ms=round(elapsed * 1000),
+                 created=total_created,
+                 enriched=total_enriched,
+                 skipped=skipped_existing,
+                 hash_failed=scan_state.hash_failed,
+                 enrich_failed=scan_state.enrich_failed,
+                 permission_denied=scan_state.permission_denied,
++                missing_marked_count=scan_state.missing_marked,
++                recovered_count=scan_state.recovered,
+                 root=root,
+             )
+ 
+             self._emit_event(
+                 "assets.seed.completed",
+                 {
+                     "phase": phase.value,
+                     "total": total_paths,
+@@ -786,16 +792,27 @@ class _AssetSeeder:
+                             _start_paused=start_paused,
+                         ):
+                             logging.warning(
+                                 "Pending scan could not start (roots=%s, phase=%s)",
+                                 pending["roots"],
+                                 pending["phase"].value,
+                             )
+ 
++    @staticmethod
++    def _emit_marked_missing(root: RootType, marked: int) -> None:
++        """Report the rows a scan marked missing because their file was not found."""
++        if marked > 0:
++            emit(
++                "seeder.marked_missing",
++                count=marked,
++                stage=_ScanStage.FAST_SCAN.value,
++                root=root,
++            )
++
+     def _run_fast_phase(self, roots: tuple[RootType, ...]) -> tuple[int, int, int]:
+         """Run phase 1: fast scan to create stub records.
+ 
+         Returns:
+             Tuple of (total_created, skipped_existing, total_paths)
+         """
+         t_fast_start = time.perf_counter()
+         total_created = 0
+@@ -809,17 +826,19 @@ class _AssetSeeder:
+         scan_state = self._scan_state
+         for r in roots:
+             if self._check_pause_and_cancel(_ScanStage.FAST_SCAN):
+                 return total_created, skipped_existing, 0
+             if by_listing:
+                 live_references = live_references_safely(r)
+                 existing_paths.update(live_references)
+             else:
++                marked_before = scan_state.missing_marked
+                 existing_paths.update(sync_root_safely(r, scan_state))
++                self._emit_marked_missing(r, scan_state.missing_marked - marked_before)
+         logging.debug(
+             "Fast scan: sync_root phase took %.3fs (%d existing paths)",
+             time.perf_counter() - t_sync,
+             len(existing_paths),
+         )
+ 
+         if self._check_pause_and_cancel(_ScanStage.FAST_SCAN):
+             return total_created, skipped_existing, 0
+@@ -829,17 +848,19 @@ class _AssetSeeder:
+         paths = walk.files if walk is not None else collect_paths_for_roots(roots)
+         logging.debug(
+             "Fast scan: collect_paths took %.3fs (%d paths found)",
+             time.perf_counter() - t_collect,
+             len(paths),
+         )
+         if walk is not None:
+             vanished, unlisted = unlisted_references(live_references, walk.listings)
+-            mark_unlisted_references_missing_safely("output", vanished)
++            marked_before = scan_state.missing_marked
++            mark_unlisted_references_missing_safely("output", vanished, scan_state)
++            self._emit_marked_missing("output", scan_state.missing_marked - marked_before)
+             logging.debug(
+                 "Fast scan: output listing: %d dirs listed, %d rows retired, "
+                 "%d rows skipped (not listed, still on disk)",
+                 walk.dirs_listed,
+                 len(vanished),
+                 unlisted,
+             )
+         total_paths = len(paths)
+@@ -882,17 +903,17 @@ class _AssetSeeder:
+                     total_created,
+                 )
+                 return total_created, skipped_existing, total_paths
+ 
+             batch = specs[i : i + batch_size]
+             batch_tags = {t for spec in batch for t in spec["tags"]}
+             created = 0
+             try:
+-                created, batch_error = insert_asset_specs(batch, batch_tags)
++                created, batch_error = insert_asset_specs(batch, batch_tags, scan_state)
+                 total_created += created
+                 if batch_error is not None:
+                     raise batch_error
+             except MemoryError:
+                 # Recording this as a batch failure would march the scan through
+                 # every remaining batch while the process is out of memory.
+                 raise
+             except Exception as e:
+
+diff --git a/comfy/ldm/minimax/vae.py b/comfy/ldm/minimax/vae.py
+index ffb3584..53b5ccb 100644
+--- a/comfy/ldm/minimax/vae.py
++++ b/comfy/ldm/minimax/vae.py
+@@ -421,16 +421,17 @@ class MiniMaxH3VideoVAE(nn.Module):
+         space_down=(2, 2, 2, 2, 1, 1),
+         time_down=(1, 2, 2, 1, 1, 1),
+         clip_length=17,
+         token_drop=3,
+         tile_size=256,
+         tile_overlap_min=64,
+         tiling=True,
+         operations=ops,
++        num_layers=36,
+     ):
+         super().__init__()
+         self.vae_ratio = int(math.prod(space_down))
+         self.vae_ratio_t = int(math.prod(time_down))
+ 
+         # temporal chunking parameters
+         self.clip_length = clip_length
+         self.token_drop = token_drop
+@@ -456,16 +457,17 @@ class MiniMaxH3VideoVAE(nn.Module):
+         )
+         self.quant_conv = ops.Conv3d(z_channels * 2, 2 * embed_dim, 1)
+         self.post_quant_conv = ops.Conv3d(embed_dim, z_channels, 1)
+         self.decoder = ViT3DDecoder(
+             patch_size=self.vae_ratio,
+             patch_size_t=self.vae_ratio_t,
+             in_channels=z_channels,
+             out_channels=out_ch,
++            num_layers=num_layers,
+             operations=operations,
+         )
+ 
+         self.register_buffer("latents_mean", torch.tensor(LATENTS_MEAN))
+         self.register_buffer("latents_std", torch.tensor(LATENTS_STD))
+         self.register_buffer("pixel_mean", torch.tensor(IMAGENET_MEAN).view(1, 3, 1, 1, 1), persistent=False)
+         self.register_buffer("pixel_std", torch.tensor(IMAGENET_STD).view(1, 3, 1, 1, 1), persistent=False)
+ 
+
+diff --git a/comfy/ldm/qwen_image21/model.py b/comfy/ldm/qwen_image21/model.py
+index 8e2d6ad..b804b9e 100644
+--- a/comfy/ldm/qwen_image21/model.py
++++ b/comfy/ldm/qwen_image21/model.py
+@@ -390,14 +390,17 @@ class QwenImage21Transformer2DModel(nn.Module):
+                 def block_wrap(args):
+                     return {"img": block(args["img"], mod, args["pe"], attn_fn, prefix_len, args["transformer_options"])}
+                 args = {"img": hidden_states, "vec": temb, "pe": pe, "mod": mod, "attn_fn": attn_fn, "prefix_len": prefix_len, "transformer_options": transformer_options}
+                 hidden_states = blocks_replace[("single_block", i)](args, {"original_block": block_wrap})["img"]
+             else:
+                 hidden_states = block(hidden_states, mod, pe, attn_fn, prefix_len, transformer_options)
+             for p in patches.get("single_block", []):
+                 hidden_states = p({"img": hidden_states, "x": x, "block_index": i, "transformer_options": transformer_options})["img"]
++            if cache is not None:
++                # Release dequantized K/V before leaving the block's allocation scope.
++                del attn_fn, prefix_k, prefix_v
+ 
+         comfy.model_prefetch.prefetch_queue_pop(prefetch_queue, x.device, None, malloc_scope="block")
+         comfy.model_prefetch.malloc_graph_end()
+         hidden_states = self.norm_out(hidden_states[:, prefix_len:], temb[:-1])
+         hidden_states = self.proj_out(hidden_states)
+         return hidden_states.transpose(1, 2).reshape(B, self.out_channels, H, W)
+
+diff --git a/comfy/sd.py b/comfy/sd.py
+index 73a35aa..50176f7 100644
+--- a/comfy/sd.py
++++ b/comfy/sd.py
+@@ -1026,17 +1026,18 @@ class VAE:
+                 #Force cast it for --disable-dynamic-vram users until there is a true core fix.
+                 if not comfy.memory_management.aimdo_enabled:
+                     self.disable_offload = True
+             elif "decoder.transformer_blocks.0.scale1" in sd and "encoder.down.5.block.0.conv1.weight" in sd:  # MiniMax H3 video VAE
+                 minimax_ops = comfy.ops.disable_weight_init
+                 minimax_quant = comfy.utils.detect_layer_quantization(sd, "")
+                 if minimax_quant is not None:  # int8+convrot quantized decoder
+                     minimax_ops = comfy.ops.mixed_precision_ops(minimax_quant, dtype if dtype is not None else torch.float16)
+-                self.first_stage_model = comfy.ldm.minimax.vae.MiniMaxH3VideoVAE(operations=minimax_ops)
++                minimax_layers = sum(k.startswith("decoder.transformer_blocks.") and k.endswith(".scale1") for k in sd)
++                self.first_stage_model = comfy.ldm.minimax.vae.MiniMaxH3VideoVAE(operations=minimax_ops, num_layers=minimax_layers)
+                 self.latent_channels = 24
+                 self.latent_dim = 3
+                 # frames 17k+5 <-> latents 5k+2, 16x spatial
+                 self.upscale_ratio = (lambda a: max(1, (a - 2) // 5 * 17 + 5), 16, 16)
+                 self.upscale_index_formula = (4, 16, 16)
+                 self.downscale_ratio = (lambda a: max(1, (a - 5) // 17 * 5 + 2) if a > 1 else 1, 16, 16)
+                 self.downscale_index_formula = (4, 16, 16)
+                 self.working_dtypes = [torch.float16, torch.float32]
+
+diff --git a/comfy_api/latest/_input/video_types.py b/comfy_api/latest/_input/video_types.py
+index 600e116..8b4936a 100644
+--- a/comfy_api/latest/_input/video_types.py
++++ b/comfy_api/latest/_input/video_types.py
+@@ -32,17 +32,17 @@ class VideoInput(ABC):
+         crf: float | None = None,
+         color_space: str | None = None,
+         preset: str | None = None,
+     ):
+         """
+         Abstract method to save the video input to a file.
+ 
+         bit_depth selects the encoded bit depth; None keeps the video's native depth.
+-        crf selects the H.264 or AV1 constant rate factor; None uses the encoder default.
++        crf selects the H.264 or AV1 constant rate factor; None uses 18 for H.264 or 24 for AV1 when encoding.
+         preset selects the H.264 encoder speed/compression trade-off (e.g. "ultrafast");
+         None uses the encoder default. Ignored for other codecs.
+         color_space="sRGB" selects SDR BT.709/sRGB, "HDR" selects BT.2020/HLG, and "HDR PQ"
+         selects BT.2020/PQ. Bit depth is selected independently.
+         Tensor-created videos default to sRGB when color_space is None. Loaded videos keep matching recognized native color
+         properties; other input pixels must already use the selected color space.
+         """
+         pass
+
+diff --git a/comfy_api/latest/_input_impl/video_types.py b/comfy_api/latest/_input_impl/video_types.py
+index d32b482..b0e331b 100644
+--- a/comfy_api/latest/_input_impl/video_types.py
++++ b/comfy_api/latest/_input_impl/video_types.py
+@@ -205,24 +205,25 @@ def video_stream_color_space(stream) -> str | None:
+     if stream is None:
+         return None
+     return VIDEO_TRANSFER_COLOR_SPACES.get(stream.color_trc)
+ 
+ 
+ def video_encoder_options(
+     codec: VideoCodec, crf: float | None, preset: str | None = None
+ ) -> dict[str, str]:
++    if crf is None:
++        crf = 24 if codec == VideoCodec.AV1 else 18
+     options = {}
+     if preset is not None and codec == VideoCodec.H264:
+         options["preset"] = preset
+-    if crf is not None:
+-        if codec == VideoCodec.AV1 and crf == 0:
+-            options["svtav1-params"] = "lossless=1"
+-        else:
+-            options["crf"] = str(crf)
++    if codec == VideoCodec.AV1 and crf == 0:
++        options["svtav1-params"] = "lossless=1"
++    else:
++        options["crf"] = str(crf)
+     return options
+ 
+ 
+ def webm_streams_compatible(streams) -> bool:
+     for stream in streams:
+         allowed_codecs = WEBM_STREAM_CODECS.get(stream.type)
+         if allowed_codecs is not None and stream.codec_context is not None and stream.codec.canonical_name not in allowed_codecs:
+             return False
+
+diff --git a/comfy_api/latest/_io.py b/comfy_api/latest/_io.py
+index cdaaba9..4115bdc 100644
+--- a/comfy_api/latest/_io.py
++++ b/comfy_api/latest/_io.py
+@@ -1311,16 +1311,135 @@ class DynamicSlot(ComfyTypeI):
+         finalized_id = finalize_prefix(curr_prefix)
+         if finalized_id in live_inputs:
+             inputs = value[1]["inputs"]
+             parse_class_inputs(out_dict, live_inputs, inputs, curr_prefix)
+             # add self to inputs
+             out_dict[input_type][finalized_id] = value
+             out_dict["dynamic_paths"][finalized_id] = finalize_prefix(curr_prefix, curr_prefix[-1])
+ 
++class DynamicInputError(ValueError):
++    def __init__(self, input_name: str, message: str):
++        super().__init__(message)
++        self.input_name = input_name
++
++
++@comfytype(io_type="COMFY_DYNAMICGROUP_V3")
++class DynamicGroup(ComfyTypeI):
++    """Repeat a widget template and pass its values to execute as a list of row dicts.
++
++    Template fields must be widget inputs without force_input or nested dynamic inputs.
++    Submit fields as '<group>.<index>.<field>', using indices below max without leading zeros.
++    The '<group>.' prefix is reserved for group fields, not separate sibling inputs.
++    min/max are integers that count submitted rows (defaults: 0/20), even when optional=True.
++    max also bounds the reconstructed list length and cannot exceed 20.
++    Each submitted row follows the template's required/optional field declarations.
++
++    Missing positions are dicts whose fields are None. Missing optional fields are
++    also None; widget defaults are not injected. With INPUT_IS_LIST, missing fields
++    are [None], matching the lists supplied for submitted fields.
++
++    Empty groups are [] in execute and check_lazy_status. Nonempty lazy groups
++    contain (value, original_key) tuples at each field.
++    PriceBadge widget dependencies use the same indexed field names as prompt keys.
++    """
++
++    Type = list[dict[str, Any]]
++    _MaxRows = 20
++
++    class Input(DynamicInput):
++        def __init__(self, id: str, template: list[WidgetInput], min: int=0, max: int=20,
++                     display_name: str=None, optional: bool=False, tooltip: str=None,
++                     lazy: bool=None, extra_dict=None, group_name: str="Group"):
++            super().__init__(id, display_name, optional, tooltip, lazy, extra_dict)
++            if not template:
++                raise ValueError("DynamicGroup template must have at least one field.")
++            for t in template:
++                if isinstance(t, DynamicInput):
++                    raise ValueError("Nesting dynamic inputs inside DynamicGroup is not supported.")
++                if not isinstance(t, WidgetInput):
++                    raise TypeError("DynamicGroup template fields must be WidgetInputs.")
++                if t.force_input:
++                    raise ValueError(f"DynamicGroup template field '{t.id}' must not use force_input.")
++                if not t.id or "." in t.id:
++                    raise ValueError(f"DynamicGroup template field id must be nonempty and must not contain '.'. Got: '{t.id}'")
++            field_ids = [t.id for t in template]
++            if len(field_ids) != len(set(field_ids)):
++                raise ValueError("DynamicGroup template field ids must be unique within a row.")
++            if not id or "." in id:
++                raise ValueError(f"DynamicGroup id must be nonempty and must not contain '.'. Got: '{id}'")
++            if isinstance(min, bool) or not isinstance(min, int) or isinstance(max, bool) or not isinstance(max, int):
++                raise TypeError("DynamicGroup min and max must be integers.")
++            if not 1 <= max <= DynamicGroup._MaxRows:
++                raise ValueError(f"DynamicGroup max must be between 1 and {DynamicGroup._MaxRows}.")
++            if not 0 <= min <= max:
++                raise ValueError("DynamicGroup min must be between 0 and max.")
++            self.template = template
++            self.min = min
++            self.max = max
++            self.group_name = group_name
++
++        def get_all(self) -> list[Input]:
++            return [self] + list(self.template)
++
++        def as_dict(self):
++            return super().as_dict() | prune_dict({
++                "template": create_input_dict_v1(self.template),
++                "min": self.min,
++                "max": self.max,
++                "group_name": self.group_name,
++            })
++
++        def validate(self):
++            for t in self.template:
++                t.validate()
++
++    @staticmethod
++    def _expand_schema_for_dynamic(out_dict: dict[str, Any], live_inputs: dict[str, Any], value: tuple[str, dict[str, Any]], input_type: str, curr_prefix: list[str] | None):
++        info = value[1]
++        min_rows = info.get("min", 0)
++        max_rows = info.get("max", DynamicGroup._MaxRows)
++        template = info.get("template", {})
++        field_specs = {
++            field_id: (field_value, category)
++            for category in ("required", "optional")
++            for field_id, field_value in template.get(category, {}).items()
++        }
++        finalized_prefix = finalize_prefix(curr_prefix)
++        prefix = finalized_prefix + "."
++        present_rows = set()
++        for key in live_inputs:
++            if not key.startswith(prefix):
++                continue
++            index, separator, field_id = key[len(prefix):].partition(".")
++            if (not separator or not index.isascii() or not index.isdecimal()
++                    or (len(index) > 1 and index.startswith("0")) or field_id not in field_specs):
++                raise DynamicInputError(key, f"Invalid DynamicGroup input key '{key}'; expected '{finalized_prefix}.<index>.<template field>'.")
++            row = int(index)
++            if row >= max_rows:
++                raise DynamicInputError(key, f"DynamicGroup input '{key}' exceeds the index limit of {max_rows - 1} (max={max_rows}).")
++            present_rows.add(row)
++
++        if not min_rows <= len(present_rows) <= max_rows:
++            raise DynamicInputError(finalized_prefix, f"DynamicGroup input '{finalized_prefix}' received {len(present_rows)} rows; expected between {min_rows} and {max_rows}.")
++
++        for row in range(max(present_rows, default=-1) + 1):
++            for field_id, (field_value, category) in field_specs.items():
++                slot_id = f"{finalized_prefix}.{row}.{field_id}"
++                if row in present_rows:
++                    out_dict[category][slot_id] = field_value
++                # Preserve gaps without adding validation inputs for them.
++                out_dict["dynamic_paths"][slot_id] = slot_id
++
++        out_dict["list_paths"].add(finalized_prefix)
++        if not present_rows:
++            out_dict["dynamic_paths"][finalized_prefix] = finalized_prefix
++            out_dict["dynamic_paths_default_value"][finalized_prefix] = DynamicPathsDefaultValue.EMPTY_LIST
++
++
+ @comfytype(io_type="IMAGECOMPARE")
+ class ImageCompare(ComfyTypeI):
+   Type = dict
+ 
+   class Input(WidgetInput):
+       def __init__(self, id: str, display_name: str=None, optional=False, tooltip: str=None,
+                    socketless: bool=True, advanced: bool=None):
+           super().__init__(id, display_name, optional, tooltip, None, None, socketless, None, None, None, None, advanced)
+@@ -1524,27 +1643,31 @@ def get_dynamic_input_func(io_type: str) -> Callable[[dict[str, Any], dict[str,
+ 
+ def setup_dynamic_input_funcs():
+     # Autogrow.Input
+     register_dynamic_input_func(Autogrow.io_type, Autogrow._expand_schema_for_dynamic)
+     # DynamicCombo.Input
+     register_dynamic_input_func(DynamicCombo.io_type, DynamicCombo._expand_schema_for_dynamic)
+     # DynamicSlot.Input
+     register_dynamic_input_func(DynamicSlot.io_type, DynamicSlot._expand_schema_for_dynamic)
++    # DynamicGroup.Input
++    register_dynamic_input_func(DynamicGroup.io_type, DynamicGroup._expand_schema_for_dynamic)
+ 
+ if len(DYNAMIC_INPUT_LOOKUP) == 0:
+     setup_dynamic_input_funcs()
+ 
+ class V3Data(TypedDict):
+     hidden_inputs: dict[str, Any]
+     'Dictionary where the keys are the hidden input ids and the values are the values of the hidden inputs.'
+     dynamic_paths: dict[str, Any]
+     'Dictionary where the keys are the input ids and the values dictate how to turn the inputs into a nested dictionary.'
+     dynamic_paths_default_value: dict[str, Any]
+     'Dictionary where the keys are the input ids and the values are a string from DynamicPathsDefaultValue for the inputs if value is None.'
++    list_paths: set[str]
++    'Paths whose index-keyed row dictionaries are reconstructed as lists.'
+     create_dynamic_tuple: bool
+     'When True, the value of the dynamic input will be in the format (value, path_key).'
+ 
+ class HiddenHolder:
+     def __init__(self, unique_id: str, prompt: Any,
+                  extra_pnginfo: Any, dynprompt: Any,
+                  auth_token_comfy_org: str, api_key_comfy_org: str,
+                  comfy_usage_source: str = None, execution_list: Any = None, **kwargs):
+@@ -1646,26 +1769,29 @@ class PriceBadgeDepends:
+         if not isinstance(self.widgets, list) or any(not isinstance(x, str) for x in self.widgets):
+             raise ValueError("PriceBadgeDepends.widgets must be a list[str].")
+         if not isinstance(self.inputs, list) or any(not isinstance(x, str) for x in self.inputs):
+             raise ValueError("PriceBadgeDepends.inputs must be a list[str].")
+         if not isinstance(self.input_groups, list) or any(not isinstance(x, str) for x in self.input_groups):
+             raise ValueError("PriceBadgeDepends.input_groups must be a list[str].")
+ 
+     def as_dict(self, schema_inputs: list["Input"]) -> dict[str, Any]:
+-        # Build lookup: widget_id -> io_type
+         input_types: dict[str, str] = {}
+-        for inp in schema_inputs:
+-            all_inputs = inp.get_all()
+-            input_types[inp.id] = inp.get_io_type()  # First input is always the parent itself
+-            for nested_inp in all_inputs[1:]:
+-                # For DynamicCombo/DynamicSlot, nested inputs are prefixed with parent ID
+-                # to match frontend naming convention (e.g., "should_texture.enable_pbr")
+-                prefixed_id = f"{inp.id}.{nested_inp.id}"
+-                input_types[prefixed_id] = nested_inp.get_io_type()
++
++        def collect_inputs(inputs: list[Input], prefix: str = "") -> None:
++            for inp in inputs:
++                name = prefix + inp.id
++                input_types[name] = inp.get_io_type()
++                if isinstance(inp, DynamicGroup.Input):
++                    for row in range(inp.max):
++                        collect_inputs(inp.template, f"{name}.{row}.")
++                else:
++                    collect_inputs(inp.get_all()[1:], name + ".")
++
++        collect_inputs(schema_inputs)
+ 
+         # Enrich widgets with type information, raising error for unknown widgets
+         widgets_data: list[dict[str, str]] = []
+         for w in self.widgets:
+             if w not in input_types:
+                 raise ValueError(
+                     f"PriceBadge depends_on.widgets references unknown widget '{w}'. "
+                     f"Available widgets: {list(input_types.keys())}"
+@@ -1883,31 +2009,34 @@ class Schema:
+         return info
+ 
+ def get_finalized_class_inputs(d: dict[str, Any], live_inputs: dict[str, Any], include_hidden=False) -> tuple[dict[str, Any], V3Data]:
+     out_dict = {
+         "required": {},
+         "optional": {},
+         "dynamic_paths": {},
+         "dynamic_paths_default_value": {},
++        "list_paths": set(),
+     }
+     d = d.copy()
+     # ignore hidden for parsing
+     hidden = d.pop("hidden", None)
+     parse_class_inputs(out_dict, live_inputs, d)
+     if hidden is not None and include_hidden:
+         out_dict["hidden"] = hidden
+     v3_data = {}
+     dynamic_paths = out_dict.pop("dynamic_paths", None)
+     if dynamic_paths is not None and len(dynamic_paths) > 0:
+         v3_data["dynamic_paths"] = dynamic_paths
+-    # this list is used for autogrow, in the case all inputs are optional and no values are passed
+     dynamic_paths_default_value = out_dict.pop("dynamic_paths_default_value", None)
+     if dynamic_paths_default_value is not None and len(dynamic_paths_default_value) > 0:
+         v3_data["dynamic_paths_default_value"] = dynamic_paths_default_value
++    list_paths = out_dict.pop("list_paths")
++    if list_paths:
++        v3_data["list_paths"] = list_paths
+     return out_dict, hidden, v3_data
+ 
+ def parse_class_inputs(out_dict: dict[str, Any], live_inputs: dict[str, Any], curr_dict: dict[str, Any], curr_prefix: list[str] | None=None) -> None:
+     for input_type, inner_d in curr_dict.items():
+         for id, value in inner_d.items():
+             io_type = value[0]
+             if io_type in DYNAMIC_INPUT_LOOKUP:
+                 # dynamic inputs need to be handled with lookup functions
+@@ -1916,66 +2045,92 @@ def parse_class_inputs(out_dict: dict[str, Any], live_inputs: dict[str, Any], cu
+                 dynamic_input_func(out_dict, live_inputs, value, input_type, new_prefix)
+             else:
+                 # non-dynamic inputs get directly transferred
+                 finalized_id = finalize_prefix(curr_prefix, id)
+                 out_dict[input_type][finalized_id] = value
+                 if curr_prefix:
+                     out_dict["dynamic_paths"][finalized_id] = finalized_id
+ 
++def _dynamic_group_prefixes(inputs: list[Input]) -> Iterable[str]:
++    for inp in inputs:
++        if isinstance(inp, DynamicGroup.Input):
++            yield inp.id + "."
++        elif isinstance(inp, DynamicInput):
++            for prefix in _dynamic_group_prefixes(inp.get_all()[1:]):
++                yield f"{inp.id}.{prefix}"
++
++
+ def create_input_dict_v1(inputs: list[Input]) -> dict:
+     input = {
+         "required": {}
+     }
++    group_prefixes = tuple(_dynamic_group_prefixes(inputs))
+     for i in inputs:
++        if group_prefixes and i.id.startswith(group_prefixes):
++            raise ValueError(f"Input '{i.id}' conflicts with a DynamicGroup field prefix.")
+         add_to_dict_v1(i, input)
+     return input
+ 
+ def add_to_dict_v1(i: Input, d: dict):
+     key = "optional" if i.optional else "required"
+     as_dict = i.as_dict()
+     # for v1, we don't want to include the optional key
+     as_dict.pop("optional", None)
+     d.setdefault(key, {})[i.id] = (i.get_io_type(), as_dict)
+ 
+ class DynamicPathsDefaultValue:
+     EMPTY_DICT = "empty_dict"
++    EMPTY_LIST = "empty_list"
+ 
+-def build_nested_inputs(values: dict[str, Any], v3_data: V3Data):
++def build_nested_inputs(values: dict[str, Any], v3_data: V3Data, *, input_is_list: bool = False):
+     paths = v3_data.get("dynamic_paths", None)
+     default_value_dict = v3_data.get("dynamic_paths_default_value", {})
++    list_paths = v3_data.get("list_paths", set())
+     if paths is None:
+         return values
+     values = values.copy()
+ 
+     result = {}
+ 
+     create_tuple = v3_data.get("create_dynamic_tuple", False)
+ 
+     for key, path in paths.items():
+         parts = path.split(".")
+         current = result
+ 
+         for i, p in enumerate(parts):
+             is_last = (i == len(parts) - 1)
+ 
+             if is_last:
++                missing = key not in values
+                 value = values.pop(key, None)
+-                if value is None:
+-                    # see if a default value was provided for this key
+-                    default_option = default_value_dict.get(key, None)
+-                    if default_option == DynamicPathsDefaultValue.EMPTY_DICT:
+-                        value = {}
+-                if create_tuple:
++                default_option = default_value_dict.get(key, None)
++                if default_option == DynamicPathsDefaultValue.EMPTY_LIST:
++                    # No row keys were submitted, regardless of the root input value.
++                    value = []
++                elif value is None and default_option == DynamicPathsDefaultValue.EMPTY_DICT:
++                    value = {}
++                elif missing and input_is_list and ".".join(parts[:-2]) in list_paths:
++                    value = [None]
++                if create_tuple and default_option != DynamicPathsDefaultValue.EMPTY_LIST:
+                     value = (value, key)
+                 current[p] = value
+             else:
+                 current = current.setdefault(p, {})
+ 
+     values.update(result)
++    for list_path in list_paths:
++        parts = list_path.split(".")
++        container = values
++        for part in parts[:-1]:
++            container = container[part]
++        rows = container[parts[-1]]
++        if isinstance(rows, dict):
++            container[parts[-1]] = [rows[key] for key in sorted(rows, key=int)]
+     return values
+ 
+ 
+ class _ComfyNodeBaseInternal(_ComfyNodeInternal):
+     """Common base class for storing internal methods and properties; DO NOT USE for defining nodes."""
+ 
+     RELATIVE_PYTHON_MODULE = None
+     SCHEMA = None
+@@ -2533,16 +2688,17 @@ __all__ = [
+     "Tracks",
+     "Dict",
+     "Array",
+     "Color",
+     # Dynamic Types
+     "MatchType",
+     "DynamicCombo",
+     "Autogrow",
++    "DynamicGroup",
+     # Other classes
+     "HiddenHolder",
+     "Hidden",
+     "NodeInfoV1",
+     "Schema",
+     "ComfyNode",
+     "NodeOutput",
+     "add_to_dict_v1",
+
+diff --git a/comfy_extras/nodes_minimax_h3.py b/comfy_extras/nodes_minimax_h3.py
+index 1ad3c6a..755d38b 100644
+--- a/comfy_extras/nodes_minimax_h3.py
++++ b/comfy_extras/nodes_minimax_h3.py
+@@ -18,16 +18,17 @@ import comfy.audio
+ import nodes
+ import comfy.model_management
+ import comfy.model_prefetch
+ import comfy.model_sampling
+ import comfy.nested_tensor
+ import comfy.patcher_extension
+ import comfy.utils
+ import node_helpers
++import latent_preview
+ from comfy.ldm.minimax.model import FRAME_PER_TOKEN, FRAME_RESCALE
+ from comfy.ldm.minimax.vae import IMAGENET_MEAN
+ from comfy_api.latest import ComfyExtension, io
+ 
+ CANVAS_MULTIPLE = 32
+ BASE_SHORT_EDGE = 768
+ MAX_PIXELS = 768 * 1344
+ REF_IMAGE_SHORT_EDGE = 2048
+@@ -133,16 +134,17 @@ class MiniMaxH3ImageToVideo(io.ComfyNode):
+                 io.Image.Input("last_frame", optional=True),
+             ],
+             outputs=[io.Conditioning.Output(display_name="positive"), io.Latent.Output()],
+         )
+ 
+     @classmethod
+     def execute(cls, clip, vae, prompt, width, height, length,
+                 first_frame=None, last_frame=None) -> io.NodeOutput:
++        latent_preview.set_frame_preview_vae(vae)
+         latent, frame_count = _empty_av_latent(width, height, length)
+ 
+         images = []
+         keyframes = []
+         if first_frame is not None:
+             # geometry anchor: plain stretch to canvas
+             img = _resize(first_frame[:1], width, height, "disabled")
+             images.append(img)
+@@ -284,16 +286,17 @@ class MiniMaxH3ReferenceToVideo(io.ComfyNode):
+                         prefix="ref_audio_", min=0, max=3)),
+             ],
+             outputs=[io.Conditioning.Output(display_name="positive"), io.Latent.Output()],
+         )
+ 
+     @classmethod
+     def execute(cls, clip, prompt, width, height, length, ref_image_size="match", vae=None, audio_vae=None,
+                 ref_images=None, ref_videos=None, ref_video_audios=None, ref_audios=None) -> io.NodeOutput:
++        latent_preview.set_frame_preview_vae(vae)
+         latent, frame_count = _empty_av_latent(width, height, length)
+ 
+         ref_items = []   # for the tokenizer presentation, in request order
+         ref_blocks = []  # for the DiT payload, same order
+ 
+         for img in (ref_images or {}).values():
+             if img is None:
+                 continue
+
+diff --git a/comfy_extras/nodes_video.py b/comfy_extras/nodes_video.py
+index 70876a9..a753211 100644
+--- a/comfy_extras/nodes_video.py
++++ b/comfy_extras/nodes_video.py
+@@ -85,17 +85,17 @@ def _save_video_codec_input(supported_codecs: list[str], *, optional=False, hidd
+                     io.DynamicCombo.Input(
+                         "encoding",
+                         display_name="encoding mode",
+                         options=[
+                             io.DynamicCombo.Option("auto", []),
+                             io.DynamicCombo.Option(
+                                 "re-encode",
+                                 [
+-                                    io.Float.Input("crf", default=23.0, min=0.0, max=51.0, step=1.0, tooltip="Lower values produce higher quality and larger files."),
++                                    io.Float.Input("crf", default=18.0, min=0.0, max=51.0, step=1.0, tooltip="Lower values produce higher quality and larger files."),
+                                 ],
+                             ),
+                         ],
+                         optional=True,
+                         tooltip="Automatic preserves compatible H.264 streams. Re-encode applies custom encoding options.",
+                     ),
+                 ],
+             )
+@@ -108,17 +108,17 @@ def _save_video_codec_input(supported_codecs: list[str], *, optional=False, hidd
+                     io.DynamicCombo.Input(
+                         "encoding",
+                         display_name="encoding mode",
+                         options=[
+                             io.DynamicCombo.Option("auto", []),
+                             io.DynamicCombo.Option(
+                                 "re-encode",
+                                 [
+-                                    io.Float.Input("crf", default=30.0, min=0.0, max=63.0, step=1.0, tooltip="Lower values produce higher quality and larger files."),
++                                    io.Float.Input("crf", default=24.0, min=0.0, max=63.0, step=1.0, tooltip="Lower values produce higher quality and larger files."),
+                                 ],
+                             ),
+                         ],
+                         optional=True,
+                         tooltip="Automatic preserves compatible AV1 streams. Re-encode applies custom encoding options.",
+                     ),
+                 ],
+             )
+
+diff --git a/execution.py b/execution.py
+index 2e4cf64..af8908f 100644
+--- a/execution.py
++++ b/execution.py
+@@ -16,17 +16,17 @@ from comfy.cli_args import args, get_console_log_level
+ import comfy.memory_management
+ import comfy.model_management
+ import comfy.model_patcher
+ import comfy.model_prefetch
+ import comfy.system_memory
+ import comfy_aimdo.model_vbar
+ from comfy.internal_logging import detail
+ 
+-from latent_preview import set_preview_method
++from latent_preview import set_frame_preview_enabled, set_frame_preview_vae, set_preview_method
+ import nodes
+ from comfy_execution.caching import (
+     BasicCache,
+     CacheKeySetID,
+     CacheKeySetInputSignature,
+     NullCache,
+     HierarchicalCache,
+     LRUCache,
+@@ -288,17 +288,17 @@ async def _async_map_node_over_list(prompt_id, unique_id, obj, input_data_all, f
+                 # otherwise, use class instance to populate/reuse some fields
+                 else:
+                     type_obj = type(obj)
+                     type_obj.VALIDATE_CLASS()
+                     class_clone = type_obj.PREPARE_CLASS_CLONE(v3_data)
+                 f = make_locked_method_func(type_obj, func, class_clone)
+                 # in case of dynamic inputs, restructure inputs to expected nested dict
+                 if v3_data is not None:
+-                    inputs = _io.build_nested_inputs(inputs, v3_data)
++                    inputs = _io.build_nested_inputs(inputs, v3_data, input_is_list=input_is_list)
+             # V1
+             else:
+                 f = getattr(obj, func)
+             if inspect.iscoroutinefunction(f):
+                 async def async_wrapper(f, prompt_id, unique_id, list_index, args):
+                     with CurrentNodeContext(prompt_id, unique_id, list_index):
+                         return await f(**args)
+                 task = asyncio.create_task(async_wrapper(f, prompt_id, unique_id, index, args=inputs))
+@@ -724,16 +724,18 @@ class PromptExecutor:
+             except Exception as e:
+                 _cache_logger.warning(f"Cache provider {provider.__class__.__name__} error on {event}: {e}")
+ 
+     def execute(self, prompt, prompt_id, extra_data={}, execute_outputs=[]):
+         asyncio.run(self.execute_async(prompt, prompt_id, extra_data, execute_outputs))
+ 
+     async def execute_async(self, prompt, prompt_id, extra_data={}, execute_outputs=[]):
+         set_preview_method(extra_data.get("preview_method"))
++        set_frame_preview_enabled(extra_data.get("preview_file", True))
++        set_frame_preview_vae(None)
+ 
+         nodes.interrupt_processing(False)
+         self.prompt_model_tracker.start()
+ 
+         if "client_id" in extra_data:
+             self.server.client_id = extra_data["client_id"]
+         else:
+             self.server.client_id = None
+@@ -875,17 +877,27 @@ async def validate_inputs(prompt_id, prompt, item, validated, visiting=None):
+     valid = True
+ 
+     v3_data = None
+     validate_function_inputs = []
+     validate_has_kwargs = False
+     if issubclass(obj_class, _ComfyNodeInternal):
+         obj_class: _io._ComfyNodeBaseInternal
+         class_inputs = obj_class.INPUT_TYPES()
+-        class_inputs, _, v3_data = _io.get_finalized_class_inputs(class_inputs, inputs)
++        try:
++            class_inputs, _, v3_data = _io.get_finalized_class_inputs(class_inputs, inputs)
++        except _io.DynamicInputError as ex:
++            errors.append({
++                "type": "invalid_dynamic_input",
++                "message": "Invalid dynamic input",
++                "details": str(ex),
++                "extra_info": {"input_name": ex.input_name},
++            })
++            validated[unique_id] = (False, errors, unique_id)
++            return validated[unique_id]
+         validate_function_name = "validate_inputs"
+         validate_function = first_real_override(obj_class, validate_function_name)
+     else:
+         class_inputs = obj_class.INPUT_TYPES()
+         validate_function_name = "VALIDATE_INPUTS"
+         validate_function = getattr(obj_class, validate_function_name, None)
+     if validate_function is not None:
+         argspec = inspect.getfullargspec(validate_function)
+
+diff --git a/latent_preview.py b/latent_preview.py
+index f505940..0d37523 100644
+--- a/latent_preview.py
++++ b/latent_preview.py
+@@ -1,21 +1,79 @@
++import os
++import tempfile
++import time
+ import torch
+ from PIL import Image
+ from comfy.cli_args import args, LatentPreviewMethod
+ from comfy.taesd.taesd import TAESD
+ from comfy.sd import VAE
+ import comfy.model_management
+ import comfy.model_prefetch
+ import folder_paths
+ import comfy.utils
+ import logging
+ 
+ default_preview_method = args.preview_method
+ 
++# H3 视频帧预览：采样中用工作流的 video VAE 解码真实帧落盘（MiniMaxH3ReferenceToVideo 注册 VAE，
++# execution 按任务设置开关）。文件存 %TEMP%\iw-preview-*，首个任务首帧弹一次资源管理器。
++_frame_preview_enabled = False
++_frame_preview_vae: VAE | None = None
++_frame_preview_dir: str | None = None
++_frame_preview_count = 0
++
++
++def set_frame_preview_enabled(enabled: bool):
++    global _frame_preview_enabled, _frame_preview_dir, _frame_preview_count
++    _frame_preview_enabled = enabled
++    _frame_preview_dir = None
++    _frame_preview_count = 0
++
++
++def set_frame_preview_vae(vae):
++    global _frame_preview_vae
++    _frame_preview_vae = vae
++
++
++def _frame_preview_dir_path() -> str:
++    global _frame_preview_dir
++    if _frame_preview_dir is None:
++        _frame_preview_dir = os.path.join(
++            tempfile.gettempdir(),
++            f"iw-preview-{time.strftime('%m%d%H%M%S')}-{os.getpid() % 100000:05d}",
++        )
++        os.makedirs(_frame_preview_dir, exist_ok=True)
++        os.startfile(_frame_preview_dir)
++    return _frame_preview_dir
++
++
++def _save_frame_preview(x0_video: torch.Tensor, step: int):
++    """解码中间 1/3 时间窗的真帧，均匀取 6 帧保存（约每秒 3 帧），封面本任务的唯一文件夹。"""
++    global _frame_preview_count
++    vae = _frame_preview_vae
++    t = x0_video.shape[2]
++    t0, t1 = t // 3, t - t // 3
++    if t1 - t0 < 5:
++        t0, t1 = 0, max(5, t)
++    frames = vae.decode(x0_video[:, :, t0:t1])
++    n = frames.shape[1]
++    dir_path = _frame_preview_dir_path()
++    for i in {round(k * (n - 1) / 5) for k in range(6)}:
++        img = frames[0, i]
++        img = img.float().clamp(0, 1).mul(255).to(dtype=torch.uint8)
++        Image.fromarray(img.cpu().numpy()).save(
++            os.path.join(dir_path, f"step{step:03d}_f{i:02d}.jpg"), quality=90
++        )
++    _frame_preview_count += 1
++    logging.info(
++        f"frame preview: step {step}/{_frame_preview_count} decoded {n} frames -> "
++        f"{dir_path} (t {t0}:{t1} of {t})"
++    )
++
+ MAX_PREVIEW_RESOLUTION = args.preview_size
+ VIDEO_TAES = ["taehv", "lighttaew2_2", "lighttaew2_1", "lighttaehy1_5", "taeltx_2", "taeh3"]
+ 
+ def preview_to_image(latent_image, do_scale=True):
+         if do_scale:
+             latents_ubyte = (((latent_image + 1.0) / 2.0).clamp(0, 1)  # change scale from -1..1 to 0..1
+                                 .mul(0xFF)  # to 0..255
+                                 )
+@@ -126,16 +184,27 @@ def prepare_callback(model, steps, x0_output_dict=None):
+ 
+     previewer = get_previewer(model.load_device, model.model.latent_format)
+ 
+     pbar = comfy.utils.ProgressBar(steps)
+     def callback(step, x0, x, total_steps):
+         if x0_output_dict is not None:
+             x0_output_dict["x0"] = x0
+ 
++        if x0.is_nested and _frame_preview_enabled and _frame_preview_vae is not None:
++            every = max(1, total_steps // 4)
++            # step 1 额外触发第一批预览：借此把 VAE decode 自带的 free_memory 提前到采样初期，
++            # 让动态 DiT 以低水位按需运行（--enable-dynamic-vram 下反复加载 ≪ 内存 swap）。
++            if step > 0 and (step == 1 or step % every == 0):
++                try:
++                    _save_frame_preview(x0.tensors[0], step)
++                except Exception:
++                    logging.warning("frame preview failed at step %d", step)
++                    set_frame_preview_enabled(False)
++
+         preview_bytes = None
+         if previewer:
+             if x0.is_nested:
+                 x0 = x0.tensors[0]
+             preview_bytes = previewer.decode_latent_to_preview_image(preview_format, x0)
+         pbar.update_absolute(step + 1, total_steps, preview_bytes)
+     return callback
+ 

@@ -186,6 +186,29 @@ python_embeded\python.exe -m pip install opencv-python-headless -i https://mirro
 
 `ComfyUI\__pycache__`、`ComfyUI\temp`、`ComfyUI\user`（Manager 数据库 comfyui.db、运行日志）。
 
+### 4.6 ComfyUI 内核改动：帧预览（2026-10-07）
+
+> ⚠️ 这是**唯一动过 ComfyUI 源码的改动**，换机必须显式打上，否则 `plan\bat\preview_watch\` 永远等不到预览帧。补丁与说明见 `plan\bat\preview_watch\`、`plan\README.md §6.7`。
+
+| 改动文件（相对 `ComfyUI_windows_portable\`） | 干什么 |
+|---|---|
+| `ComfyUI\latent_preview.py` | **帧预览主战场**：模块级状态 + 采样 callback 里用工作流的 video VAE 解码 latent → 写 `%TEMP%\iw-preview-{MMddHHmmss}-{pid%100000}\`；首批 step 1 触发（顺带把动态 DiT 提前挤到低水位），之后每 `total_steps//4` 步一批 |
+| `ComfyUI\comfy_extras\nodes_minimax_h3.py` | H3 节点接上 `latent_preview` 回调（`import latent_preview`），i2v/t2v/ref2v 三套共用 |
+| `ComfyUI\execution.py` | 任务起止通知与 `extra_data.preview_file` 传递 |
+
+**两个补丁文件**（同目录，均为权威版）：
+
+| 补丁 | 覆盖 | 用途 |
+|---|---|---|
+| `frame_preview_kernel.patch` | 8,271 B / 3 文件 | **帧预览功能本体**，就是上表 3 个文件的改动 |
+| `official-0.38.0-to-current.patch` | 63,330 B / 14 文件 | 官方 `0.38.0` tag → 本机当前内核的完整复刻 = 帧预览 3 文件 + 11 个 2026-09-30 之后的官方上游提交。**换机复现本机内核状态用它**，之后 `frame_preview_kernel.patch` 已包含在内 |
+
+**打补丁步骤**：`cd ComfyUI_windows_portable\ComfyUI` → `git apply frame_preview_kernel.patch`（在 0.38.0 源码树上已 `--check` 验证）→ **重启 ComfyUI 生效**。
+
+**实机状态可验证**（本机 ComfyUI 是 git 仓库，2026-10-07 `git status`）：本地改动**恰好只有上表 3 个文件**，与补丁的 `diff --git` 清单一一对应，无其它漂移。换机后同样跑一次 `git status` 对表即可。
+
+**影响范围**：`plan\molbal_workflows\final\` 的 15 个视频工作流（i2v/t2v 共用 `MiniMaxH3ImageToVideo`，ref2v 走 `ReferenceToVideo`），**工作流文件本身零改动**；请求侧需 `extra_data.preview_file=true`（项目侧默认 true，手动 `POST /prompt` 不传则 ComfyUI 默认 true）。Qwen-Image 线不受影响。
+
 ---
 
 ## 五、工作流（plan/molbal_workflows/final/）
@@ -228,7 +251,7 @@ op 系列（官方 prompt 合规版，§11.9）：T2V/I2V 的 `length` 已从 73
 
 ## 六、Python 脚本（plan/bat/，2026-10-02 重构为「族 × TE 变体」矩阵）
 
-**4 个生成族 × 3 个 TE 变体 = 12 个目录 + 3 个工具目录 + 提示词模板/归档/分段归档**。变体唯一差别是 `CCTechClipProjLoader` 的 `clip_name` / `type` / `projection` 三元组（`krea2` / `boogu` 是**节点 type 枚举值**，不是文件名）：
+**4 个生成族 × 3 个 TE 变体 = 12 个目录 + 4 个工具目录 + 提示词模板/归档/分段归档**。变体唯一差别是 `CCTechClipProjLoader` 的 `clip_name` / `type` / `projection` 三元组（`krea2` / `boogu` 是**节点 type 枚举值**，不是文件名）：
 
 | 后缀 | clip_name | type | projection |
 |---|---|---|---|
@@ -245,8 +268,9 @@ op 系列（官方 prompt 合规版，§11.9）：T2V/I2V 的 `length` 已从 73
 | `extract_frames\` | 工具：抽 **首/中/末** 三帧 PNG（`--mid` 调中间帧，防覆盖） | 无 TE 变体 |
 | `qc_frames\` | 工具：QC 抽帧 + contact sheet（配 `vision-deepseek` 识图） | 无 TE 变体 |
 | `free_vram\` | 工具：调 ComfyUI `/free` 卸载模型、释放 Dynamic VRAM 残留（§八） | 无 TE 变体 |
+| `preview_watch\` | 工具：H3 生成中**实时预览帧监视器**，轮询 `/queue` + `%TEMP%\iw-preview-*` 打印内核落盘的真帧 | 无 TE 变体；**需先给内核打补丁**，见 §4.6 |
 
-每个目录含 `gen_*.py` + `gen_*.bat`（Windows 入口），**例外 `free_vram\` = `free_vram.py` + `free_vram.bat`**。`prompt.txt` 随目录（交互模式优先读同目录，另有 `--prompt-file`，UTF-8/GBK 自动识别；`--prompt` 为单条、全部段复用）。输出重名自动追加 `_1/_2` 防覆盖。
+每个目录含 `gen_*.py` + `gen_*.bat`（Windows 入口），**例外 `free_vram\` = `free_vram.py` + `free_vram.bat`、`preview_watch\` = `watch_h3_preview.py` + `watch_h3_preview.bat`**。`prompt.txt` 随目录（交互模式优先读同目录，另有 `--prompt-file`，UTF-8/GBK 自动识别；`--prompt` 为单条、全部段复用）。输出重名自动追加 `_1/_2` 防覆盖。
 
 | 辅助目录 | 内容 |
 |---|---|
@@ -256,7 +280,7 @@ op 系列（官方 prompt 合规版，§11.9）：T2V/I2V 的 `length` 已从 73
 | `prompt说明.txt` | 根级提示词文件用法说明 |
 | `..\bak\` | ⚠️ **早期脚本退场副本，与 `bat\` 内同名文件易混，不要从这里取用** |
 
-依赖：ComfyUI 运行在 `http://127.0.0.1:8188`，**本地 API 一律直连**（2026-10-07 起 13 份脚本统一 `OPENER = build_opener(ProxyHandler({}))`，绕过系统代理，§八 有排雷）；ffmpeg（脚本内已写死本机 WinGet 版路径，换机需改 `FFMPEG` 常量）。`-8b` / `-8b-heretic` 变体与对应 4B 版归一后逐字节一致（§11.8.4）。
+依赖：ComfyUI 运行在 `http://127.0.0.1:8188`，**本地 API 一律直连**（2026-10-07 起 14 份脚本统一 `OPENER = build_opener(ProxyHandler({}))`，绕过系统代理，§八 有排雷）；ffmpeg（脚本内已写死本机 WinGet 版路径，换机需改 `FFMPEG` 常量）。`-8b` / `-8b-heretic` 变体与对应 4B 版归一后逐字节一致（§11.8.4）。
 
 ---
 
@@ -271,6 +295,7 @@ op 系列（官方 prompt 合规版，§11.9）：T2V/I2V 的 `length` 已从 73
 7. 部署启动脚本（§4.1，H3 用 ck 版 / Qwen-Image 用 `no_ck` 版）并启动，日志见 73 节点注册
 8. 导入工作流（§五，按档位选 `4b\` / `op-8b\` 等）替换素材 → 按 §一参数跑 T2V 冒烟，再 I2V / R2V
 9. 改任何模型/分辨率组合前，先跑 `python plan\vram_model.py` 过判据（`Plan.md §3.6` 速查）
+10. **（可选）打帧预览内核补丁**：`cd ComfyUI_windows_portable\ComfyUI && git apply <repo>\plan\bat\preview_watch\frame_preview_kernel.patch` → **重启 ComfyUI**（§4.6）。打完才能用 `plan\bat\preview_watch\watch_h3_preview.bat` 边跑边看预览帧；不打也不影响任何生成，只是没有预览
 
 > **仓库仍不含的本机资产**（2026-10-06 调整）：上一轮把 `API_workflows\` 整棵排除在外（理由「只在本机脚本链里用」），**本轮改判入库** —— 它含 API 格式交付层 15 份，换机必需。净增 194 文件 / 2.72 MB，含完整 `API_workflows\`（103）、`归档\日志\`（13）、`molbal_workflows\bak noerror *` 与 `bak RAW`（15）、以及整个 `plan2\`（52，Qwen-Image 2.1 生图线）。
 >
@@ -286,6 +311,7 @@ op 系列（官方 prompt 合规版，§11.9）：T2V/I2V 的 `length` 已从 73
 - ❌ 把「两个启动脚本都带 `--enable-dynamic-vram`」误认成「两个一样」——**区别只在 ck 开关**
 - ⚠️ **`--enable-dynamic-vram` 的残留物理页会让同一条工作流越跑越慢**（十几分钟的活拖成几小时）。段间清理由多段脚本内置 `POST /free` 完成；段外与批跑用 `plan\bat\free_vram\free_vram.bat`（`--status` 看状态、`--interval 60` 挂旁边周期清、`--no-verify` 发完即走）。**`/free` 是异步 flag 端点**：HTTP 200 只代表 flag 已设，真正卸载在当前任务结束后的 worker 线程执行，所以必须用 `/system_stats` 的 `vram_free` 上升来验证；任务执行中调用安全（不会打断 prompt），但它**救不了单个任务内部变慢**，那种只能重启 ComfyUI
 - ⚠️ **脚本报 `404` / `Not Found`，但浏览器开 `127.0.0.1:8188` 明明正常 → 先查系统代理，别怀疑 ComfyUI**：本机代理 `127.0.0.1:26561` 的 `ProxyOverride` **不放行 loopback**，双击 bat 的环境里又**没有 `no_proxy`**，`urllib.getproxies()` 会读**注册表**代理，把发往 `127.0.0.1:8188` 的请求也交给代理 → 代理回 404。**2026-10-07 已加固 22 份 / 68 处**（`plan\bat\` 13 份 + `plan2\qwen21-tools\` 9 份）统一 `OPENER = build_opener(ProxyHandler({}))` 直连，空 handler 同时绕过环境变量与注册表两种来源。⚠️ **opencode / 终端 shell 里往往自带 `NO_PROXY`，会掩盖这个坑** —— 别拿会话里「能跑」当证据，要用双击 bat 的环境验。残留 2 份 8 处按拍板保留（`ck_ab_20261002\gen_h3_ck_ab.py` 是实测锚点，**重跑前须先加 `OPENER`**；`bak\` 退场副本不取用），详见 `plan\README.md §6.6`
+- ⚠️ **`watch_h3_preview.bat` 一直等不到预览帧 → 先查内核补丁打没打**：预览帧由**内核**生成并落盘到 `%TEMP%\iw-preview-*`，`preview_watch\` 脚本零侵入、只在旁边监视，所以内核没改就永远没有输出。补丁与打步骤见 §4.6、`plan\README.md §6.7`；**改完必须重启 ComfyUI**。本机权威状态：ComfyUI 仓库跑 `git status`，应只有 `latent_preview.py` / `comfy_extras/nodes_minimax_h3.py` / `execution.py` 三个 `M`
 - ❌ 独立 nicolab28 `ComfyUI-ClipProj`（CCTech 内置同源，避免同名冲突）
 - ❌ `ComfyUI-MiniMaxH3-Cache`（全局 monkey-patch 破坏 H3 生成）
 - ❌ Optimization Suite / SageAttention / Tiled VAE（NV 专属或对 H3 无效）
@@ -311,7 +337,8 @@ op 系列（官方 prompt 合规版，§11.9）：T2V/I2V 的 `length` 已从 73
 | `ComfyUI_MiniMaxH3_From_Scratch.md` | 从零重建全流程（干净 portable → 可跑） |
 | `T2V_4B_vs_8B_对比报告.md` | 4B vs 8B 单变量对比（耗时/显存/逐帧指标），含 0.6MP 补测与破限 A/B（2026-09-30） |
 | `vision_qc_识图结论.md` | H3 产物画质识图结论（vision-deepseek 通道，抽帧 QC） |
-| `plan\bat\`（脚本） | 全部 Python 脚本 + bat 启动器 + prompt 模板（§六），**按族 × TE 变体分 15 个子目录** |
+| `plan\bat\`（脚本） | 全部 Python 脚本 + bat 启动器 + prompt 模板（§六），**按族 × TE 变体分 16 个子目录** |
+| `plan\bat\preview_watch\` | H3 生成中**实时预览帧监视器**（`watch_h3_preview.py/.bat` + 2 个内核补丁 `*.patch`）。**用它要先给内核打补丁**，见 §4.6 |
 | `plan\molbal_workflows\final\` | 工作流全集（§五） |
 | `plan\vram_model.py` | **显存估算模型**（纯标准库）：输出 `Plan.md §3` 全部表格，改常量即重算。改配置前先跑它算判据 |
 | `plan\CK注意力回归问题调查报告.md` | ⚠️ `--use-ck-attention` 回归完整证据链（Qwen-Image 侧 5 组 flag 对照 / token 64 边界二分 / 源码定位 / 版本溯源），对应 `Plan.md §12`。**权威版在 `plan\`，`plan2\qwen21-tools\` 下是副本** |
