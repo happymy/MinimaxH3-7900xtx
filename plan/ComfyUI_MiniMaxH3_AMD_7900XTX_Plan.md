@@ -25,6 +25,11 @@
 > - **最大收益项是零成本的**：prompt 必须改为官方三段格式（`integrated_multimodal_description` / `overall_soundscape` /
 >   `non_diegetic_music`），并删除负向约束块（本工作流无 negative conditioning 入口，负向文本无处可去）。
 > - 所有新增文件**只增不改**，4B 全套保留为回滚锚点，切换靠节点 #131 的三个下拉框。
+>
+> **2026-10-08 升级（内核 v0.39.2 + light VAE 待长测）**：
+> - 内核 **v0.38.0 → v0.39.2**（commit `3c1b7a17`，2026-10-08）：**解决 20s 卸载崩溃**（此前第 20 步卸载崩溃的 bug 已修复）。comfy-kitchen **0.2.36 → 0.2.37**（首个 commit `19ea55b` 修 #214 NaN，其余为 w4a8/w6a8 内核优化；**token>64 崩坏未修**，§12.6 待办 3 仍有效）。
+> - **light VAE 待长期验证**：`vae/minimax_h3_lynnreal_light_vae_int8_convrot.safetensors`（2,038.5 MB）已装入实机并换装到副本目录 `0.39.2_temp`（已改名 **`LynnReal light VAE 待长测（0.39.2 已定案）`**）的 12 脚本 + 42 工作流（54 处 `VIDEO_VAE`）；**正式目录 `plan\bat` / 正式工作流保持 fp16 未动**（§8 只增不改）。音频 VAE 保持 fp32。
+> - **20s 实测（2026-10-08）**：fp16 20s ≈ 2459s；light VAE 20s ≈ 2391.3s（几乎持平，符合预期——VAE 解码只占全流程一小段）；**step 0 卸载后显存驻留 ≈ 19G**（24G 卡余 ~5G），不再崩溃。GPU 利用率 0–100% 快速波动 = **dynamic-vram 主动模型搬运**，非爆显存（已提交内存不逼近上限、页面文件无活动；真 OOM 会整机卡死）。
 
 ---
 
@@ -32,15 +37,15 @@
 
 | 项 | 值 |
 |---|---|
-| ComfyUI | **0.38.0**（`ComfyUI_windows_portable`，commit `fb2315f1`，2026-09-29）。⚠️ 早期章节写的 0.34.0 已过时，实机已升级 |
+| ComfyUI | **v0.39.2**（`ComfyUI_windows_portable`，commit `3c1b7a17`，2026-10-08）。⚠️ 早期章节写的 0.34.0 / 0.38.0 已过时，实机已升级 |
 | 推理后端 | `torch 2.9.1+rocm7.2.1` / HIP 7.2.53211，识别为 AMD RX 7900 XTX（ROCm，非 CUDA） |
-| 注意力内核 | `comfy-kitchen 0.2.36`（HIP int8 backend，**有回归 bug，见 §12**）；triton 未安装 |
+| 注意力内核 | `comfy-kitchen 0.2.37`（HIP int8 backend；首个 commit `19ea55b` 修 #214 NaN，**token>64 崩坏未修，见 §12**）；triton 未安装 |
 | 启动脚本 | `run_amd_gpu_enable_dynamic_vram.bat`（**H3 生视频主力**，含 `--use-ck-attention`）；`run_amd_gpu_no_ck_attention.bat`（**Qwen-Image 2.1 生图用**，除 ck 开关外与主力逐字一致，见 §12.4）；`run_amd_gpu.bat`（**已弃用**，仅 `.bak` 存档对照）。⚠️ **两个脚本都带 `--enable-dynamic-vram`，区别只在 ck 开关；只能同时开一个 ComfyUI** |
 | GGUF 加载器 | **CCTech Suite**（`ComfyUI-GGUF-Loader` v2.16.7）已装，注册 `UnetLoaderGGUF` / `CLIPLoaderGGUF` / **`CCTechClipProjLoader`**（`nodes/extra.py:74`，CLIPLoaderGGUF 子类，可一次性「加载 GGUF 文本塔 + 应用投影矩阵」，输出 CLIP），纯 torch+`gguf` 包解包（无 llama.cpp），内置 MiniMax H3 支持。⚠️ **已修复**：import 链上的 `krea2.py→vendor/depth_anything_v2.py` 缺 `cv2` 曾导致整包被 ComfyUI 跳过，已向 `python_embeded` 装 `opencv-python-headless`（阿里云源），现 73 节点正常注册 |
 | 编码器 | `text_encoders/qwen3-vl-4b-heretic-Q4_K_M.gguf`（~2.3GB 文本塔）+ 配套 `text_encoders/qwen3-vl-4b-heretic.mmproj-f16.gguf`（836MB 视觉塔，CCTech loader 自动合并，详见 §10.3） |
 | 扩散模型 | `diffusion_models/minimax_h3_fl2va_pruned-Q4_K_M.gguf`、`diffusion_models/minimax_h3_ref2va_pruned-Q4_K_M.gguf`（均已在 `diffusion_models\`，共 ~22.8GB 十进制；**实测 `UnetLoaderGGUF` 直接读得到，无需复制到 `models\unet\`**） |
 | 投影矩阵 | `clip_projections/mmh3-4b-ClipProj-v3.1.safetensors`（25.0MB） |
-| VAE | `vae/minimax_h3_video_vae_fp16.safetensors`（5.2GB）、`vae/minimax_h3_audio_vae_fp32.safetensors`（0.6GB） |
+| VAE | `vae/minimax_h3_video_vae_fp16.safetensors`（5.2GB）、`vae/minimax_h3_audio_vae_fp32.safetensors`（0.6GB）；light VAE 已装：`vae/minimax_h3_lynnreal_light_vae_int8_convrot.safetensors`（2,038.5 MB，待长期验证，各见状态区 2026-10-08） |
 
 **三套工作流模型/VAE/矩阵全部就位，无需再补任何下载。**
 
@@ -430,7 +435,7 @@ cond = ((h - mean_in) / std_in) @ W * std_out + mean_out
 - **不适用于本机的提速项（已排查排除）**：
   - `--use-sage-attention`：**三重否决**——(1) 本机无 triton，ROCm 下装不了；(2) **AMD 官方实测 Navi31（RDNA3）上 sage 比 PyTorch SDPA 慢 30–34%**，它根本不是 AMD 上的提速项；(3) issue #15263 证实 H3 用全局 sage 产生**纯噪声**（需模型内低精度开关，本机 GGUF 路径无此开关）。
   - ✅ **替代方案已采纳：`--use-ck-attention`**（ComfyUI 自带 comfy_kitchen INT8 attention）。本机端到端 A/B 实测（同 seed 1234、8 步、1280×736×107f）：采样 **106.0 → 39.26 s/it（2.70x）**；总耗时 1005s → 498s（2.02x）；峰值专用显存 **21.37 → 20.97 GiB（反降 0.40）**；共享显存 567 → 743 MB，从未触发分页。全 107 帧逐帧比对：相关系数 0.99786、平均像素差 2.33/255、锐度 +4.05%、平坦区噪声 −5% → 差异集中在细节而非加噪。已追加到 `run_amd_gpu_enable_dynamic_vram.bat` 末尾。
-    - ⚠️ **2026-10-01 补充警告**：`--use-ck-attention` 在 comfy-kitchen 0.2.36 上存在**正确性回归**（token >64 崩坏，Qwen-Image 2.1 已确认）。本节结论**仅适用于 H3**，Qwen-Image 必须改用 `run_amd_gpu_no_ck_attention.bat`。完整证据链见 **§12**。
+    - ⚠️ **2026-10-01 补充警告**：`--use-ck-attention` 在 comfy-kitchen 0.2.36 上存在**正确性回归**（token >64 崩坏，Qwen-Image 2.1 已确认）。本节结论**仅适用于 H3**，Qwen-Image 必须改用 `run_amd_gpu_no_ck_attention.bat`。完整证据链见 **§12**。（2026-10-08 注：已升级 0.2.37，本回归**未修复**，此警告继续有效）
     - ✅ **2026-10-02 补充**：上条警告中「H3 DiT 待验证」的部分已实测关闭 —— **H3 DiT 主干走 ck 安全**，124 帧 SSIM 0.98849、四路判据全排除崩坏、锐度 ck 侧 +5.50%、端到端 1.54x。Qwen-Image 的禁用结论**不变**。证据见 **`ck_ab_20261002\`**。
   - Optimization Suite（NVFP4 Fused MLP / Low-Memory Sage2）：**Blackwell/NV 专属**，AMD 无效。
   - CAB Sampler（低步数 solver）：面向原生 ComfyUI 节点，GGUF 路径接入存疑，且非官方，优先级低。
@@ -1071,7 +1076,7 @@ dl_8b_heretic.log / .err.log     aria2 下载日志
 
 ### 12.1 一句话结论
 
-`--use-ck-attention` 的加速**不是无条件安全的**：comfy-kitchen **0.2.36** 的 masked attention 重写（#207/#208）在 **token 数跨过 64** 时输出崩坏，**Qwen-Image 2.1 已确认中招**；H3 文本侧安全（源码核实），**H3 DiT 主干已实测确认安全**（2026-10-02，见 §12.3）。
+`--use-ck-attention` 的加速**不是无条件安全的**：comfy-kitchen **0.2.36** 的 masked attention 重写（#207/#208）在 **token 数跨过 64** 时输出崩坏，**Qwen-Image 2.1 已确认中招**（2026-10-08 注：已升级 0.2.37，**此崩坏未修复**，仅首个 commit 修 #214 NaN）；H3 文本侧安全（源码核实），**H3 DiT 主干已实测确认安全**（2026-10-02，见 §12.3）。
 
 > **加速倍数口径**：§12.1 的 **2.70x** 是**纯采样**（106.0 → 39.26 s/it，同 seed / 8 步 / 1280×736×107 帧），同次总耗时口径是 **2.02x**（1005s → 498s）。2026-10-02 在甜点档（864×480 / 20 步 / 124 帧）复测的**端到端**为 **1.54x**（411.5s → 633.4s）——分辨率与步数不同，倍数不可直接互比，引用时须带口径。
 
@@ -1145,7 +1150,7 @@ if ((Get-NetTCPConnection -LocalPort 8188 -State Listen -ErrorAction SilentlyCon
 
 1. ~~**一次 H3 ck / 非-ck 对照**确认 DiT 主干可信度（§12.3 疑点）~~ → ✅ **2026-10-02 完成，结论：H3 DiT 安全**，124 帧 SSIM 0.98849、mad 0.9125、四路判据全排除崩坏、锐度 ck 侧 +5.50%、端到端 1.54x。证据见 `plan\ck_ab_20261002\`
 2. 关注上游 issue [Comfy-Org/comfy-kitchen#226](https://github.com/Comfy-Org/comfy-kitchen/issues/226)（open）
-3. 升级 comfy-kitchen 后**必须重跑** §12.2 的 token 边界二分（0.2.36 之后仅 #214 修了 NaN，0.2.37 不存在）**并重跑 `ck_ab_20261002\` 的 A/B** —— 本次 H3 安全结论仅覆盖 0.2.36 + Q4_K_M DiT / 8B fp8 TE + 864×480/20 步
+3. ✅ **2026-10-08 已升级 0.2.37**（差异已逐 commit 核实：首个 `19ea55b` 修 #214 NaN，其余 9 个为 w4a8/w6a8 内核优化，**无 token>64 masked attention 崩坏修复**）→ 升级后**仍须重跑** §12.2 的 token 边界二分**并重跑 `ck_ab_20261002\` 的 A/B** —— 本次 H3 安全结论仅覆盖 0.2.36 + Q4_K_M DiT / 8B fp8 TE + 864×480/20 步
 4. 若 #226 长期无响应，考虑把「64 tile 宽度」的精确定位数据补给上游
 5. H3 侧可考虑补测以收窄 §12.3 结论边界：多 seed 复现、非甜点档（0.6/0.7/0.9 MP）、更高分辨率、音频轨是否受影响（ck 只作用于 attention，理论上不涉及 VAE 解码，但未实测）
 
@@ -1159,7 +1164,7 @@ if ((Get-NetTCPConnection -LocalPort 8188 -State Listen -ErrorAction SilentlyCon
 
 | 目录 | 装什么 | 规模 |
 |---|---|---|
-| `D:\localAI\ComfyUI-last\plan\` | **本文件所在**。H3 生视频全部资产：工作流（UI + API 两格式）、`bat\` 脚本族、提示词模板、实测数据、ck A/B 证据 | 329 文件 / 33.41 MB |
+| `D:\localAI\ComfyUI-last\plan\` | **本文件所在**。H3 生视频全部资产：工作流（UI + API 两格式）、`bat\` 脚本族、提示词模板、实测数据、ck A/B 证据 | 446 文件 / 37.15 MB（2026-10-08 重数，含 `LynnReal light VAE 待长测（0.39.2 已定案）` 104 文件 / 2.34 MB） |
 | `D:\localAI\ComfyUI-last\plan2\` | **Qwen-Image 2.1 生图线**：部署总结、17 份工具脚本、22 份实验 API 图、上游 issue #226 材料 | 75 文件 / 4.08 MB |
 
 两者**不是父子关系，是并列的姊妹目录**。仓库侧对应 `plan/` 与 `plan2/` 两个顶层目录。
@@ -1174,6 +1179,6 @@ if ((Get-NetTCPConnection -LocalPort 8188 -State Listen -ErrorAction SilentlyCon
 上一轮把 `API_workflows\` 整棵排除在仓库外（理由「只在本机脚本链里用」），**本轮改判入库** —— 它含 API 格式交付层 15 份，换机必需。
 净增 194 文件 / 2.72 MB：完整 `API_workflows\`（103）、`归档\日志\`（13）、`molbal_workflows\bak noerror *` 与 `bak RAW`（15）、plan 根 8 份实测数据、`*.pre-ck-ab-20261002.bak`（3）、以及整个 `plan2\`（52）。
 
-仍不入库（合计约 31.8 MB，全是可重生成的产物）：`bat\` 的 mp4 与 PNG 帧（22.26 MB）、`ck_ab_20261002\` 可视化（6.44 MB）、`plan2` 两张对照图（2.94 MB）、全部 `*.pyc`（已被 `.gitignore` 排除）。
+仍不入库（合计约 19.7 MB，全是可重生成的产物）：`bat\` 的 mp4 与 PNG 帧（10.37 MB：mp4 20 个 / 7.46 MB + `*_frame.png` 24 张 / 2.91 MB）、`ck_ab_20261002\` 可视化（PNG 9 + mp4 2 = 11 个 / 6.42 MB）、`plan2` 两张对照图（2.94 MB）、全部 `*.pyc`（已被 `.gitignore` 排除）。
 
 同时清掉 6 个实机确无的死文件，并把 1 个内容有差异的旧版改名保留为锚点 —— 逐条清单见 `plan\README.md` 顶部说明块与 §2.1。

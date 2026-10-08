@@ -1,10 +1,46 @@
 diff --git a/app/assets/event_log.py b/app/assets/event_log.py
-index c6ef279..1cbeea6 100644
+index c6ef2796..bc88278d 100644
 --- a/app/assets/event_log.py
 +++ b/app/assets/event_log.py
-@@ -84,16 +84,18 @@ ALLOWED_FIELDS: dict[str, Callable[[Any], bool]] = {
+@@ -13,8 +13,10 @@ logfmt delimiter or line break — so file names, paths, asset ids and content
+ hashes cannot ride along.
+ """
+ 
++import errno
+ import logging
+ import os
++import sqlite3
+ import traceback
+ from collections.abc import Callable
+ from typing import Any
+@@ -28,6 +30,19 @@ ROOTS = frozenset({"models", "input", "output", "user", "temp"})
+ PHASES = frozenset({"fast", "enrich", "full"})
+ STAGES = frozenset({"mark_missing", "pruning", "fast_scan", "enrich", "finalize"})
+ STAT_SITES = frozenset({"discovery", "enrich"})
++ERROR_KINDS = frozenset({
++    "expression_tree_too_large",
++    "too_many_variables",
++    "database_locked",
++    "disk_full",
++    "disk_io",
++    "unable_to_open",
++    "database_corrupt",
++    "permission_denied",
++    "file_locked",
++    "read_only",
++    "other",
++})
+ ALLOWED_EVENTS = frozenset({
+     "assets.enabled",
+     "seeder.scan_started",
+@@ -83,14 +98,21 @@ ALLOWED_FIELDS: dict[str, Callable[[Any], bool]] = {
+     "phase": _one_of(PHASES),
      "stage": _one_of(STAGES),
      "elapsed_ms": _is_count,
++    "cpu_ms": _is_count,
++    "paused_ms": _is_count,
++    "dirs_listed_count": _is_count,
++    "files_statted_count": _is_count,
      "created": _is_count,
      "enriched": _is_count,
      "skipped": _is_count,
@@ -15,20 +51,115 @@ index c6ef279..1cbeea6 100644
 +    "recovered_count": _is_count,
      "count": _is_count,
      "error_type": _is_safe_string,
++    "error_kind": _one_of(ERROR_KINDS),
      "hashing_enabled": _is_flag,
      "site": _one_of(STAT_SITES),
  }
- 
- _warned_call_sites: set[tuple[str, int]] = set()
- 
-
+@@ -165,3 +187,67 @@ def error_type(exc: BaseException) -> str:
+     and friends embed the path that triggered them.
+     """
+     return type(exc).__name__
++
++
++# SQLite primary result codes (sqlite3.Error.sqlite_errorcode & 0xFF, Python 3.11+).
++_SQLITE_CODE_KINDS = {
++    5: "database_locked",  # SQLITE_BUSY
++    6: "database_locked",  # SQLITE_LOCKED
++    8: "read_only",  # SQLITE_READONLY
++    10: "disk_io",  # SQLITE_IOERR
++    11: "database_corrupt",  # SQLITE_CORRUPT
++    13: "disk_full",  # SQLITE_FULL
++    14: "unable_to_open",  # SQLITE_CANTOPEN
++    26: "database_corrupt",  # SQLITE_NOTADB
++}
++# SQLite's own fixed messages, matched as substrings of the driver exception's first
++# argument, which never carries the SQL or its bound parameters (paths). The first two
++# share the generic SQLITE_ERROR code, so only the message tells them apart; the rest
++# cover Python 3.10, which has no sqlite_errorcode.
++_SQLITE_MESSAGE_KINDS = (
++    ("expression tree is too large", "expression_tree_too_large"),
++    ("too many sql variables", "too_many_variables"),
++    ("database is locked", "database_locked"),
++    ("database table is locked", "database_locked"),
++    ("database or disk is full", "disk_full"),
++    ("disk i/o error", "disk_io"),
++    ("unable to open database file", "unable_to_open"),
++    ("database disk image is malformed", "database_corrupt"),
++    ("file is not a database", "database_corrupt"),
++    ("attempt to write a readonly database", "read_only"),
++)
++# Windows reports a file held open by another process (ERROR_SHARING_VIOLATION,
++# ERROR_LOCK_VIOLATION) as EACCES; tell it apart from a real permission problem.
++_WINERROR_KINDS = {32: "file_locked", 33: "file_locked"}
++_ERRNO_KINDS = {
++    errno.ENOSPC: "disk_full",
++    errno.EIO: "disk_io",
++    errno.EACCES: "permission_denied",
++    errno.EPERM: "permission_denied",
++    errno.EROFS: "read_only",
++}
++
++
++def error_kind(exc: BaseException) -> str:
++    """Classify a failure into :data:`ERROR_KINDS`, without ever emitting its text.
++
++    SQLAlchemy wraps the driver's exception as ``exc.orig``; its str() would carry the
++    statement and bound parameters, so only the driver's own message is inspected.
++    """
++    orig = getattr(exc, "orig", None)
++    source = orig if isinstance(orig, BaseException) else exc
++    if isinstance(source, sqlite3.Error):
++        code = getattr(source, "sqlite_errorcode", None)
++        if isinstance(code, int) and (code & 0xFF) in _SQLITE_CODE_KINDS:
++            return _SQLITE_CODE_KINDS[code & 0xFF]
++        if source.args and isinstance(source.args[0], str):
++            message = source.args[0].lower()
++            for needle, kind in _SQLITE_MESSAGE_KINDS:
++                if needle in message:
++                    return kind
++    if isinstance(source, OSError):
++        winerror = getattr(source, "winerror", None)
++        if winerror in _WINERROR_KINDS:
++            return _WINERROR_KINDS[winerror]
++        return _ERRNO_KINDS.get(source.errno, "other")
++    return "other"
 diff --git a/app/assets/scanner.py b/app/assets/scanner.py
-index 8340d6b..152caae 100644
+index 8340d6b7..b8cfeb04 100644
 --- a/app/assets/scanner.py
 +++ b/app/assets/scanner.py
-@@ -30,18 +30,20 @@ from app.assets.database.queries import (
+@@ -11,7 +11,9 @@ so the rows it never reached are selected again when the scan resumes.
+ import enum
+ import logging
+ import os
++import time
+ from dataclasses import dataclass
++from itertools import islice
+ from pathlib import Path
+ from typing import Callable, Literal, NamedTuple, Protocol, TypedDict
+ 
+@@ -20,23 +22,32 @@ import sqlalchemy as sa
+ from sqlalchemy.exc import IntegrityError
+ from sqlalchemy.orm import Session
+ from app.assets import mode
+-from app.assets.event_log import emit, error_type
++from app.assets.event_log import emit, error_kind, error_type
+ from app.assets.database.queries import (
+     create_content_reporting_insert,
+     is_live_path_conflict,
+-    mark_content_missing,
++    mark_contents_missing,
+     create_record,
+ )
  from app.assets.database.models import Asset, AssetContent
- from app.assets.helpers import path_prefix_matcher, sql_path_under_prefix, to_stored_hash
+-from app.assets.helpers import path_prefix_matcher, sql_path_under_prefix, to_stored_hash
++from app.assets.helpers import (
++    PREFIX_BATCH_SIZE,
++    path_prefix_matcher,
++    sql_path_under_prefix,
++    sql_path_under_prefix_batches,
++    stored_path_under_prefixes,
++    to_stored_hash,
++)
  from app.assets.lifecycle import get_excluded_scan_roots
  from app.assets.scanner_changes import (
      clear_pending_verifications,
@@ -42,36 +173,65 @@ index 8340d6b..152caae 100644
  )
  from app.assets.scanner_admission import (
      PARTIAL_DOWNLOAD_EXTENSIONS as PARTIAL_DOWNLOAD_EXTENSIONS,
-     _WATCH_LIST as _WATCH_LIST,
-     _WatchEntry as _WatchEntry,
-     _should_skip_extension,
-     _two_stat_admit,
-     tick_watch_list as tick_watch_list,
-@@ -76,16 +78,18 @@ __all__ = [
- # Temp is deliberately absent: it is wiped before every scan, so walking it finds nothing.
- RootType = Literal["models", "input", "output"]
- 
- 
- class _ScanProgress(Protocol):
+@@ -81,6 +92,10 @@ class _ScanProgress(Protocol):
      hash_failed: int
      enrich_failed: int
      permission_denied: int
 +    missing_marked: int
 +    recovered: int
++    dirs_listed: int
++    files_statted: int
  
      def mark_emitted(self, key: str) -> bool: ...
  
- 
- class SeedAssetSpec(TypedDict):
- 
-     abs_path: str
-     # Walk-time diagnostics only: seeding persists the seed-time restat instead.
-@@ -152,17 +156,26 @@ def get_temp_prefixes() -> list[str]:
-     if temp_dir in get_excluded_scan_roots():
-         return []
-     return [temp_dir]
+@@ -120,6 +135,46 @@ class _ReferenceObservation(NamedTuple):
+     stat_result: os.stat_result | None
  
  
++# Before each write batch: blocks while the scan is paused, returns True to stop.
++ShouldStop = Callable[[], bool]
++
++
++def _never_stop() -> bool:
++    return False
++
++
++# The marking steps write in batches of WRITE_BATCH_ROWS, each its own transaction, so
++# the write lock is never held for a whole pass and a foreground write (an output being
++# registered) waits at most one batch. After each commit the thread sleeps about as
++# long as it held the lock: a writer in SQLite's busy handler polls with growing sleeps
++# (up to 100 ms), so taking the lock straight back would keep winning it.
++WRITE_BATCH_ROWS = 256
++WRITE_YIELD_MIN_SECONDS = 0.02
++WRITE_YIELD_MAX_SECONDS = 0.1
++
++
++def _write_in_batches(
++    items: list,
++    write_batch: Callable[[Session, list], int],
++    should_stop: ShouldStop,
++    committed: list[int],
++) -> None:
++    """Apply ``write_batch`` to ``items`` a batch per transaction, appending the count
++    each batch reports to ``committed`` once it commits. A failure leaves the batches
++    before it committed, and ``committed`` says how much they wrote."""
++    for start in range(0, len(items), WRITE_BATCH_ROWS):
++        if should_stop():
++            break
++        opened = time.perf_counter()
++        with create_write_session() as session:
++            count = write_batch(session, items[start : start + WRITE_BATCH_ROWS])
++            session.commit()
++        committed.append(count)
++        held = time.perf_counter() - opened
++        if start + WRITE_BATCH_ROWS < len(items):
++            time.sleep(min(max(held, WRITE_YIELD_MIN_SECONDS), WRITE_YIELD_MAX_SECONDS))
++
++
+ def _log_scan_error(phase: str, error: OSError) -> None:
+     error_type = (
+         "permission_denied" if isinstance(error, PermissionError) else "os_error"
+@@ -157,7 +212,16 @@ def get_temp_prefixes() -> list[str]:
  def collect_models_files() -> list[str]:
      out: list[str] = []
      for folder_name, bases, _exts in get_comfy_models_folders():
@@ -89,18 +249,12 @@ index 8340d6b..152caae 100644
          for rel_path in rel_files:
              if not all(is_visible(part) for part in Path(rel_path).parts):
                  continue
-             abs_path = folder_paths.get_full_path(folder_name, rel_path)
-             if not abs_path:
-                 continue
-             abs_path = os.path.abspath(abs_path)
-             allowed = False
-@@ -186,91 +199,103 @@ def observe_references_on_filesystem(
-         (content.id, content.path, content.size_bytes, content.mtime_ns)
-         for content in live_contents_under_prefixes(session, prefixes)
-     ]
+@@ -189,9 +253,11 @@ def observe_references_on_filesystem(
      observations: list[_ReferenceObservation] = []
      survivors: set[str] = set()
      for content_id, path, size_bytes, mtime_ns in contents:
++        if progress is not None:
++            progress.files_statted += 1
          try:
              stat_result = os.stat(path, follow_symlinks=True)
 -        except FileNotFoundError:
@@ -108,7 +262,7 @@ index 8340d6b..152caae 100644
              observations.append(_ReferenceObservation(content_id, size_bytes, mtime_ns, None))
          except PermissionError as e:
              _log_scan_error("reference_stat", e)
-             if progress is not None:
+@@ -199,9 +265,10 @@ def observe_references_on_filesystem(
                  progress.permission_denied += 1
              logging.debug("Permission denied accessing %s", path)
          except OSError as e:
@@ -120,71 +274,72 @@ index 8340d6b..152caae 100644
          else:
              survivors.add(os.path.abspath(path))
              if stat_result.st_mtime_ns != mtime_ns:
-                 observations.append(
-                     _ReferenceObservation(content_id, size_bytes, mtime_ns, stat_result)
-                 )
-     return observations, survivors
- 
+@@ -213,7 +280,11 @@ def observe_references_on_filesystem(
  
  def apply_reference_observations(
      session: Session, observations: list[_ReferenceObservation]
 -) -> None:
 +) -> int:
 +    """Apply the observations; returns how many rows were marked missing."""
-+    marked = 0
++    # One query loads the rows, so the session.get calls below never go to the database.
++    list(session.scalars(sa.select(AssetContent).where(AssetContent.id.in_([o.content_id for o in observations]))))
++    gone: list[str] = []
      for observation in observations:
          content = session.get(AssetContent, observation.content_id)
          # Skip a row another writer changed since it was observed; the next scan sees it afresh.
-         if (
-             content is None
-             or content.is_missing
-             or content.size_bytes != observation.size_bytes
-             or content.mtime_ns != observation.mtime_ns
+@@ -225,7 +296,7 @@ def apply_reference_observations(
          ):
              continue
          if observation.stat_result is None:
-             mark_content_missing(session, content.id)
-+            marked += 1
+-            mark_content_missing(session, content.id)
++            gone.append(content.id)
              continue
          detect_content_change(
              session,
-             content,
+@@ -233,100 +304,132 @@ def apply_reference_observations(
              observation.stat_result,
              hashing_is_enabled=mode.hashing_enabled(),
          )
-+    return marked
++    return len(mark_contents_missing(session, gone))
  
  
- def _sync_prefixes_in_write_txn(
-     prefixes: list[str], progress: _ScanProgress | None
--) -> set[str]:
-+) -> tuple[set[str], int]:
-+    """Returns the surviving paths and how many rows were marked missing."""
+-def _sync_prefixes_in_write_txn(
+-    prefixes: list[str], progress: _ScanProgress | None
++def _sync_prefixes(
++    prefixes: list[str],
++    progress: _ScanProgress | None,
++    should_stop: ShouldStop,
++    marked: list[int],
+ ) -> set[str]:
++    """Returns the surviving paths; ``marked`` gets each committed batch's count of rows
++    marked missing, which a caller still has if a later batch raises."""
      with create_session() as session:
          observations, survivors = observe_references_on_filesystem(
              session, prefixes, progress
          )
-+    marked = 0
-     if observations:
-         with create_write_session() as session:
+-    if observations:
+-        with create_write_session() as session:
 -            apply_reference_observations(session, observations)
-+            marked = apply_reference_observations(session, observations)
-             session.commit()
--    return survivors
-+    return survivors, marked
+-            session.commit()
++    _write_in_batches(observations, apply_reference_observations, should_stop, marked)
+     return survivors
  
  
  def sync_root_safely(
-     root: RootType, progress: _ScanProgress | None = None
+-    root: RootType, progress: _ScanProgress | None = None
++    root: RootType,
++    progress: _ScanProgress | None = None,
++    should_stop: ShouldStop = _never_stop,
  ) -> set[str]:
      """Sync a single root's references with the filesystem.
  
      Returns survivors (existing paths) or empty set on failure.
      """
++    marked: list[int] = []
      try:
 -        return _sync_prefixes_in_write_txn(get_scan_prefixes_for_root(root), progress)
-+        survivors, marked = _sync_prefixes_in_write_txn(
-+            get_scan_prefixes_for_root(root), progress
++        survivors = _sync_prefixes(
++            get_scan_prefixes_for_root(root), progress, should_stop, marked
 +        )
      except Exception as exc:
          logging.exception("fast DB scan failed for %s: %s", root, exc)
@@ -192,25 +347,180 @@ index 8340d6b..152caae 100644
              "scanner.fast_scan_failed",
              root=root,
              error_type=error_type(exc),
++            error_kind=error_kind(exc),
          )
-         return set()
+-        return set()
++        survivors = set()
 +    if progress is not None:
-+        progress.missing_marked += marked
++        progress.missing_marked += sum(marked)
 +    return survivors
  
  
  def sync_temp_references_safely(
      progress: _ScanProgress | None = None,
++    should_stop: ShouldStop = _never_stop,
  ) -> None:
      """Retire temp references whose file is gone; temp is never scanned, so nothing else stats them."""
      try:
-         _sync_prefixes_in_write_txn(get_temp_prefixes(), progress)
-@@ -443,29 +468,34 @@ def _listing_verdict(
-         files, subdirs = listings[parent]
-         names = names_by_dir[parent] = {*files, *subdirs}
-     if name not in names:
-         return ListingVerdict.ABSENT
-     return ListingVerdict.LISTED if child == path else ListingVerdict.UNKNOWN
+-        _sync_prefixes_in_write_txn(get_temp_prefixes(), progress)
++        _sync_prefixes(get_temp_prefixes(), progress, should_stop, [])
+     except Exception as exc:
+         logging.exception("temp reference sync failed: %s", exc)
+         emit(
+             "scanner.temp_sync_failed",
+             root="temp",
+             error_type=error_type(exc),
++            error_kind=error_kind(exc),
+         )
+ 
+ 
+-def mark_missing_outside_prefixes_safely(prefixes: list[str]) -> int | None:
++def mark_missing_outside_prefixes_safely(
++    prefixes: list[str], should_stop: ShouldStop = _never_stop
++) -> int | None:
+     """Mark references as missing when outside the given prefixes.
+ 
+     This is a non-destructive soft-delete. Returns the count marked, or None when
+-    the operation fails.
++    the operation fails; batches committed before a failure stay committed.
+     """
++    marked: list[int] = []
+     try:
+         with create_session() as sess:
+-            count = mark_contents_missing_outside_prefixes(sess, prefixes)
+-            sess.commit()
+-            return count
++            content_ids = content_ids_outside_prefixes(sess, prefixes)
++        _write_in_batches(
++            content_ids,
++            lambda session, batch: len(mark_contents_missing(session, batch)),
++            should_stop,
++            marked,
++        )
++        return sum(marked)
+     except Exception as exc:
+-        logging.exception("marking missing assets failed: %s", exc)
++        logging.exception("marking missing assets failed after marking %d: %s", sum(marked), exc)
+         emit(
+             "scanner.mark_missing_failed",
+             error_type=error_type(exc),
++            error_kind=error_kind(exc),
+         )
+         return None
+ 
+ 
+-def mark_contents_missing_outside_prefixes(
+-    session: Session, prefixes: list[str]
+-) -> int:
+-    contents = session.scalars(
+-        sa.select(AssetContent)
+-        .where(AssetContent.is_missing.is_(False))
++def content_ids_outside_prefixes(session: Session, prefixes: list[str]) -> list[str]:
++    """The live rows outside every prefix. A read: the marking re-checks each is still
++    live inside its own write transaction."""
++    is_owned = path_prefix_matcher(prefixes)
++    rows = session.execute(
++        sa.select(AssetContent.id, AssetContent.path)
++        .where(AssetContent.is_missing == sa.false())
+         .execution_options(yield_per=500)
+     )
+-    is_owned = path_prefix_matcher(prefixes)
+-    missing = [content for content in contents if not is_owned(content.path)]
+-    for content in missing:
+-        mark_content_missing(session, content.id)
+-    return len(missing)
++    return [content_id for content_id, path in rows if not is_owned(path)]
+ 
+ 
+-def collect_paths_for_roots(roots: tuple[RootType, ...]) -> list[str]:
+-    """Collect all file paths for the given roots."""
++def collect_paths_for_roots(
++    roots: tuple[RootType, ...],
++    progress: _ScanProgress | None = None,
++    should_stop: ShouldStop = _never_stop,
++) -> list[str]:
++    """Collect all file paths for the given roots.
++
++    ``progress.dirs_listed`` counts the input and output walks only. Models are
++    listed through folder_paths.get_filename_list, which walks the model folders
++    on a cache miss and re-checks their mtimes on a hit; none of that is counted.
++
++    ``should_stop`` is checked before each input or output directory; once it returns
++    True the list is partial, so callers check it again before using the result.
++    """
+     paths: list[str] = []
+     if "models" in roots:
+         paths.extend(collect_models_files())
+     if "input" in roots:
+-        paths.extend(list_files_recursively(folder_paths.get_input_directory()))
++        paths.extend(list_files_recursively(folder_paths.get_input_directory(), progress, should_stop))
+     if "output" in roots:
+-        paths.extend(list_files_recursively(folder_paths.get_output_directory()))
++        paths.extend(list_files_recursively(folder_paths.get_output_directory(), progress, should_stop))
+     return paths
+ 
+ 
+@@ -354,28 +457,37 @@ def live_references_safely(root: RootType) -> dict[str, list[_ReferenceObservati
+     live: dict[str, list[_ReferenceObservation]] = {}
+     if not prefixes:
+         return live
+-    stmt = sa.select(
+-        AssetContent.id, AssetContent.path, AssetContent.size_bytes, AssetContent.mtime_ns
+-    ).where(
+-        AssetContent.is_missing.is_(False),
+-        sa.or_(*(sql_path_under_prefix(AssetContent.path, p) for p in prefixes)),
+-    )
++    seen: set[str] = set()
+     try:
+         with create_session() as session:
+-            for content_id, path, size_bytes, mtime_ns in session.execute(stmt):
+-                yield_gil(run=RESCAN_YIELD_RUN)
+-                live.setdefault(os.path.abspath(path), []).append(
+-                    _ReferenceObservation(content_id, size_bytes, mtime_ns, None)
+-                )
++            for under_prefixes in sql_path_under_prefix_batches(AssetContent.path, prefixes):
++                stmt = sa.select(
++                    AssetContent.id, AssetContent.path, AssetContent.size_bytes, AssetContent.mtime_ns
++                ).where(AssetContent.is_missing.is_(False), under_prefixes)
++                for content_id, path, size_bytes, mtime_ns in session.execute(stmt):
++                    yield_gil(run=RESCAN_YIELD_RUN)
++                    if content_id in seen:
++                        continue
++                    seen.add(content_id)
++                    live.setdefault(os.path.abspath(path), []).append(
++                        _ReferenceObservation(content_id, size_bytes, mtime_ns, None)
++                    )
+     except Exception as exc:
+         logging.exception("fast DB scan failed for %s: %s", root, exc)
+-        emit("scanner.fast_scan_failed", root=root, error_type=error_type(exc))
++        emit(
++            "scanner.fast_scan_failed",
++            root=root,
++            error_type=error_type(exc),
++            error_kind=error_kind(exc),
++        )
+         return {}
+     return live
+ 
+ 
+ def unlisted_references(
+-    live: dict[str, list[_ReferenceObservation]], listings: DirListings
++    live: dict[str, list[_ReferenceObservation]],
++    listings: DirListings,
++    progress: _ScanProgress | None = None,
+ ) -> tuple[list[_ReferenceObservation], int]:
+     """Split the live rows into (vanished, skipped count).
+ 
+@@ -396,6 +508,8 @@ def unlisted_references(
+         # Stat before retiring. A listing compares names exactly, but a case-insensitive
+         # (NTFS, APFS) or Unicode-normalizing (HFS+) filesystem resolves a stored path
+         # spelled differently from its entry. Rows that reach here are normally few.
++        if progress is not None:
++            progress.files_statted += 1
+         if _is_gone(path):
+             vanished.extend(observations)
+         else:
+@@ -448,19 +562,26 @@ def _listing_verdict(
  
  
  def mark_unlisted_references_missing_safely(
@@ -218,36 +528,93 @@ index 8340d6b..152caae 100644
 +    root: RootType,
 +    observations: list[_ReferenceObservation],
 +    progress: _ScanProgress | None = None,
++    should_stop: ShouldStop = _never_stop,
  ) -> None:
      """Retire rows whose file the listing lacks, through the same guarded write
      sync_root applies to a row whose file has vanished."""
-     if not observations:
-         return
+-    if not observations:
+-        return
++    marked: list[int] = []
      try:
-         with create_write_session() as session:
+-        with create_write_session() as session:
 -            apply_reference_observations(session, observations)
-+            marked = apply_reference_observations(session, observations)
-             session.commit()
+-            session.commit()
++        _write_in_batches(observations, apply_reference_observations, should_stop, marked)
      except Exception as exc:
          logging.exception("fast DB scan failed for %s: %s", root, exc)
-         emit("scanner.fast_scan_failed", root=root, error_type=error_type(exc))
-+        return
+-        emit("scanner.fast_scan_failed", root=root, error_type=error_type(exc))
++        emit(
++            "scanner.fast_scan_failed",
++            root=root,
++            error_type=error_type(exc),
++            error_kind=error_kind(exc),
++        )
 +    if progress is not None:
-+        progress.missing_marked += marked
++        progress.missing_marked += sum(marked)
  
  
  def list_output_for_rescan() -> ListingWalk:
-     """Walk the output root, listing every directory."""
-     return walk_listings(folder_paths.get_output_directory())
+@@ -473,6 +594,7 @@ def build_asset_specs(
+     existing_paths: set[str],
+     enable_metadata_extraction: bool = True,
+     progress: _ScanProgress | None = None,
++    should_stop: ShouldStop = _never_stop,
+ ) -> tuple[list[SeedAssetSpec], set[str], int]:
+     """Build asset specs from paths, returning (specs, tag_pool, skipped_count).
  
+@@ -481,6 +603,8 @@ def build_asset_specs(
+         existing_paths: Set of paths that already exist in the database
+         enable_metadata_extraction: If True, extract tier 1 & 2 metadata
+         progress: Optional per-scan state for emit-once bookkeeping
++        should_stop: Checked before each path's stats and spec, so a large library
++            can pause here; once it returns True, no specs are returned
+     """
+     specs: list[SeedAssetSpec] = []
+     tag_pool: set[str] = set()
+@@ -488,6 +612,8 @@ def build_asset_specs(
+     candidates: list[tuple[str, os.stat_result]] = []
  
- def build_asset_specs(
-@@ -542,16 +572,23 @@ def build_asset_specs(
-                 "job_id": None,
-             }
-         )
-         tag_pool.update(tags)
+     for p in paths:
++        if should_stop():
++            return [], set(), skipped
+         abs_p = os.path.abspath(p)
+         if _should_skip_extension(abs_p):
+             skipped += 1
+@@ -495,6 +621,8 @@ def build_asset_specs(
+         if abs_p in existing_paths:
+             skipped += 1
+             continue
++        if progress is not None:
++            progress.files_statted += 1
+         try:
+             stat_p = os.stat(abs_p, follow_symlinks=True)
+         except FileNotFoundError:
+@@ -505,15 +633,22 @@ def build_asset_specs(
+                 if isinstance(e, PermissionError):
+                     progress.permission_denied += 1
+                 if progress.mark_emitted("stat_failed:discovery"):
+-                    emit("scanner.stat_failed", site="discovery", error_type=error_type(e))
++                    emit(
++                        "scanner.stat_failed",
++                        site="discovery",
++                        error_type=error_type(e),
++                        error_kind=error_kind(e),
++                    )
+             continue
+         if not stat_p.st_size:
+             continue
+         candidates.append((abs_p, stat_p))
  
+-    admitted_paths, _ = _two_stat_admit(candidates)
++    admitted_paths, _ = _two_stat_admit(candidates, progress, should_stop)
+     candidate_stats = dict(candidates)
+     for abs_p in admitted_paths:
++        if should_stop():
++            return [], set(), skipped
+         yield_gil()
+         stat_p = candidate_stats[abs_p]
+         name, tags = get_name_and_tags_from_asset_path(abs_p)
+@@ -547,6 +682,13 @@ def build_asset_specs(
      return specs, tag_pool, skipped
  
  
@@ -261,17 +628,27 @@ index 8340d6b..152caae 100644
  class _SpecObservation(NamedTuple):
      """A spec's file as seen before the write transaction opens.
  
-     ``snapshot`` is None when hashing is off, or when the file changed while being hashed.
-     """
- 
-     stat_result: os.stat_result
+@@ -557,7 +699,9 @@ class _SpecObservation(NamedTuple):
      snapshot: tuple[str, os.stat_result] | None
-@@ -582,19 +619,26 @@ def observe_asset_specs(specs: list[SeedAssetSpec]) -> dict[str, _SpecObservatio
-         observed[path] = _SpecObservation(stat_result, snapshot)
-     return observed
  
  
- def seed_asset_specs(
+-def observe_asset_specs(specs: list[SeedAssetSpec]) -> dict[str, _SpecObservation | None]:
++def observe_asset_specs(
++    specs: list[SeedAssetSpec], progress: _ScanProgress | None = None
++) -> dict[str, _SpecObservation | None]:
+     """Stat (and, in hashing mode, hash) each spec before the write transaction opens.
+ 
+     ``None`` marks a path that vanished or could not be read.
+@@ -566,6 +710,8 @@ def observe_asset_specs(specs: list[SeedAssetSpec]) -> dict[str, _SpecObservatio
+     observed: dict[str, _SpecObservation | None] = {}
+     for spec in specs:
+         path = os.path.abspath(spec["abs_path"])
++        if progress is not None:
++            progress.files_statted += 1
+         try:
+             stat_result = os.stat(path, follow_symlinks=True)
+             snapshot = snapshot_hash(path) if hashing_is_enabled else None
+@@ -587,9 +733,16 @@ def seed_asset_specs(
      session: Session,
      specs: list[SeedAssetSpec],
      observed: dict[str, _SpecObservation | None] | None = None,
@@ -288,17 +665,7 @@ index 8340d6b..152caae 100644
      created = 0
      first_error: Exception | None = None
      # Counted, not gated through _ScanProgress.mark_emitted like its neighbours, because this
-     # function takes no progress object. Ungated, a restored archive of pre-epoch mtimes puts
-     # one event per file into the closed-vocabulary stream.
-     invalid_mtimes = 0
-     for spec in specs:
-         path = os.path.abspath(spec["abs_path"])
-@@ -605,22 +649,26 @@ def seed_asset_specs(
-                     continue
-                 stat_result = observation.stat_result
-                 if get_mtime_ns(stat_result) < 0:
-                     logging.warning(
-                         "Skipping asset with invalid mtime during scan: %s", path
+@@ -610,12 +763,16 @@ def seed_asset_specs(
                      )
                      invalid_mtimes += 1
                      continue
@@ -321,17 +688,7 @@ index 8340d6b..152caae 100644
                  if recovery != "no_match":
                      continue
                  content, _inserted = create_content_reporting_insert(
-                     session,
-                     path=path,
-                     hash=None,
-                     size_bytes=stat_result.st_size,
-                     mtime_ns=get_mtime_ns(stat_result),
-@@ -655,35 +703,50 @@ def seed_asset_specs(
-         except Exception as error:
-             if first_error is None:
-                 first_error = error
-     if invalid_mtimes:
-         emit("scanner.invalid_mtime", count=invalid_mtimes)
+@@ -660,14 +817,27 @@ def seed_asset_specs(
      return created, first_error
  
  
@@ -347,7 +704,8 @@ index 8340d6b..152caae 100644
  ) -> tuple[int, Exception | None]:
      if not specs:
          return 0, None
-     observed = observe_asset_specs(specs)
+-    observed = observe_asset_specs(specs)
++    observed = observe_asset_specs(specs, progress)
 +    missing_ids_by_path = None
 +    if not mode.hashing_enabled():
 +        with create_session() as sess:
@@ -361,11 +719,7 @@ index 8340d6b..152caae 100644
          try:
              sess.commit()
          except Exception:
-             if first_error is None:
-                 raise
-             logging.exception("Failed to commit successful specs from failed asset batch")
-             try:
-                 sess.rollback()
+@@ -679,15 +849,15 @@ def insert_asset_specs(
              except Exception:
                  logging.exception("Failed to roll back asset batch after commit failure")
              return 0, first_error
@@ -374,17 +728,102 @@ index 8340d6b..152caae 100644
          return created, first_error
  
  
- def build_unenriched_candidates_statement(
-     prefixes: list[str],
-     compute_hashes: bool,
-     last_seen_id: str | None,
-     limit: int = 1000,
-
+-def build_unenriched_candidates_statement(
+-    prefixes: list[str],
+-    compute_hashes: bool,
+-    last_seen_id: str | None,
+-    limit: int = 1000,
++def unenriched_candidates_query(
++    compute_hashes: bool, last_seen_id: str | None
+ ) -> sa.Select[tuple[str, str, str]]:
++    """Every unenriched live candidate after ``last_seen_id``, in id order."""
+     query = (
+         sa.select(AssetContent.id, Asset.id, AssetContent.path)
+         .join(Asset, Asset.content_id == AssetContent.id)
+@@ -704,11 +874,19 @@ def build_unenriched_candidates_statement(
+         query = query.where(Asset.system_metadata.is_(None))
+     if last_seen_id is not None:
+         query = query.where(Asset.id > last_seen_id)
++    return query.order_by(Asset.id.asc())
++
++
++def build_unenriched_candidates_statement(
++    prefixes: list[str],
++    compute_hashes: bool,
++    last_seen_id: str | None,
++    limit: int = 1000,
++) -> sa.Select[tuple[str, str, str]]:
++    """The next page of candidates under at most PREFIX_BATCH_SIZE prefixes."""
+     return (
+-        query.where(
+-            sa.or_(*(sql_path_under_prefix(AssetContent.path, p) for p in prefixes))
+-        )
+-        .order_by(Asset.id.asc())
++        unenriched_candidates_query(compute_hashes, last_seen_id)
++        .where(sa.or_(*(sql_path_under_prefix(AssetContent.path, p) for p in prefixes)))
+         .limit(limit)
+     )
+ 
+@@ -726,14 +904,24 @@ def get_unenriched_assets_for_roots(
+     if not prefixes:
+         return []
+ 
+-    query = build_unenriched_candidates_statement(
+-        prefixes,
+-        compute_hashes,
+-        last_seen_id,
+-        limit,
+-    )
+     with create_session() as sess:
+-        rows = sess.execute(query).all()
++        if len(prefixes) <= PREFIX_BATCH_SIZE:
++            statement = build_unenriched_candidates_statement(
++                prefixes,
++                compute_hashes,
++                last_seen_id,
++                limit,
++            )
++            rows = sess.execute(statement).all()
++        else:
++            # Too many prefixes for one SQL predicate. Paging each batch separately
++            # would rescan to the end of the table on every page for any batch with
++            # few matches, so filter a single id-ordered pass here instead.
++            is_under = stored_path_under_prefixes(prefixes)
++            candidates = sess.execute(
++                unenriched_candidates_query(compute_hashes, last_seen_id).execution_options(yield_per=500)
++            )
++            rows = list(islice((row for row in candidates if is_under(row[2])), limit))
+ 
+     return [
+         UnenrichedContent(content_id, record_id, file_path)
+@@ -763,6 +951,8 @@ def enrich_asset(
+     Returns:
+         Whether enrichment changed the B-schema record or content
+     """
++    if progress is not None:
++        progress.files_statted += 1
+     try:
+         stat_p = os.stat(file_path, follow_symlinks=True)
+     except FileNotFoundError:
+@@ -773,7 +963,12 @@ def enrich_asset(
+             if isinstance(e, PermissionError):
+                 progress.permission_denied += 1
+             if progress.mark_emitted("stat_failed:enrich"):
+-                emit("scanner.stat_failed", site="enrich", error_type=error_type(e))
++                emit(
++                    "scanner.stat_failed",
++                    site="enrich",
++                    error_type=error_type(e),
++                    error_kind=error_kind(e),
++                )
+         return False
+ 
+     initial_mtime_ns = get_mtime_ns(stat_p)
 diff --git a/app/assets/scanner_changes.py b/app/assets/scanner_changes.py
-index df257b8..bed169d 100644
+index df257b82..e1d84c6b 100644
 --- a/app/assets/scanner_changes.py
 +++ b/app/assets/scanner_changes.py
-@@ -1,32 +1,34 @@
+@@ -1,27 +1,29 @@
  """Reconciles catalogued content against what is actually on disk: retiring rows
  whose file is gone, splitting a row whose bytes changed, and recovering one
 -whose file came back. Recovery fires only when the returning file's hash
@@ -399,7 +838,8 @@ index df257b8..bed169d 100644
  from __future__ import annotations
  
  import os
- from collections.abc import Iterable
+-from collections.abc import Iterable
++from collections.abc import Iterator
  from typing import Literal
  
  import sqlalchemy as sa
@@ -413,22 +853,22 @@ index df257b8..bed169d 100644
      mark_content_missing,
      unset_content_missing,
  )
- from app.assets.helpers import path_prefix_matcher, sql_path_under_prefix, to_stored_hash
+-from app.assets.helpers import path_prefix_matcher, sql_path_under_prefix, to_stored_hash
++from app.assets.helpers import path_prefix_matcher, sql_path_under_prefix_batches, to_stored_hash
 +from app.assets.services.file_utils import get_mtime_ns
  from app.assets.services.path_utils import compute_loader_path, get_name_and_tags_from_asset_path
  from app.assets.services.snapshot_hash import snapshot_hash
  
- _pending_verification_ids: list[str] = []
- _pending_recovery_paths: list[str] = []
- 
- 
- def clear_pending_verifications() -> None:
-@@ -102,16 +104,70 @@ def recover_missing_content(
+@@ -55,7 +57,7 @@ def recover_missing_content(
          return "no_match"
-     unset_content_missing(session, candidate.id)
-     candidate.hash = stored_hash
-     candidate.size_bytes = verified_stat.st_size
-     candidate.mtime_ns = verified_stat.st_mtime_ns
+     occupied = session.scalar(
+         sa.select(AssetContent.id)
+-        .where(AssetContent.path == path, AssetContent.is_missing.is_(False))
++        .where(AssetContent.path == path, AssetContent.is_missing == sa.false())
+         .limit(1)
+     )
+     if occupied is not None:
+@@ -107,6 +109,60 @@ def recover_missing_content(
      return "recovered"
  
  
@@ -489,22 +929,57 @@ index df257b8..bed169d 100644
  def is_path_under_prefixes(path: str, prefixes: list[str]) -> bool:
      return path_prefix_matcher(prefixes)(path)
  
+@@ -203,12 +259,12 @@ def drain_pending_verifications(session: Session, limit: int | None = None) -> i
+     return processed
  
- def split_content(session: Session, content: AssetContent, stat_result: os.stat_result, hash_value: str | None) -> AssetContent:
-     mark_content_missing(session, content.id)
-     name, tags = get_name_and_tags_from_asset_path(content.path)
-     replacement = create_content(
-
+ 
+-def live_contents_under_prefixes(session: Session, prefixes: list[str]) -> Iterable[AssetContent]:
++def live_contents_under_prefixes(session: Session, prefixes: list[str]) -> Iterator[AssetContent]:
+     """Stream the live contents under the prefixes in batches; consume it inside the session."""
+-    if not prefixes:
+-        return []
+-    stmt = sa.select(AssetContent).where(
+-        AssetContent.is_missing.is_(False),
+-        sa.or_(*(sql_path_under_prefix(AssetContent.path, prefix) for prefix in prefixes)),
+-    )
+-    return session.scalars(stmt.execution_options(yield_per=500))
++    seen: set[str] = set()
++    for under_prefixes in sql_path_under_prefix_batches(AssetContent.path, prefixes):
++        stmt = sa.select(AssetContent).where(AssetContent.is_missing.is_(False), under_prefixes)
++        for content in session.scalars(stmt.execution_options(yield_per=500)):
++            if content.id not in seen:
++                seen.add(content.id)
++                yield content
 diff --git a/app/assets/seeder.py b/app/assets/seeder.py
-index a538f4b..5b7f682 100644
+index a538f4ba..84dbced3 100644
 --- a/app/assets/seeder.py
 +++ b/app/assets/seeder.py
-@@ -110,16 +110,20 @@ class _ScanState:
+@@ -14,7 +14,7 @@ from dataclasses import dataclass, field, replace
+ from enum import Enum
+ from typing import Any, Callable, TypedDict
  
-     scanned: int = 0
-     total: int = 0
-     created: int = 0
-     skipped: int = 0
+-from app.assets.event_log import emit, error_type
++from app.assets.event_log import emit, error_kind, error_type
+ from app.assets.scanner import (
+     RootType,
+     build_asset_specs,
+@@ -43,6 +43,15 @@ class ScanInProgressError(Exception):
+     """Raised when an operation cannot proceed because a scan is running."""
+ 
+ 
++class PruneCancelledError(Exception):
++    """A standalone prune stopped by a cancel. The batches before it stay committed;
++    ``marked`` counts them."""
++
++    def __init__(self, marked: int) -> None:
++        super().__init__(f"prune cancelled after marking {marked}")
++        self.marked = marked
++
++
+ class State(Enum):
+     """Seeder state machine states."""
+ 
+@@ -115,6 +124,19 @@ class _ScanState:
      hash_failed: int = 0
      enrich_failed: int = 0
      permission_denied: int = 0
@@ -512,17 +987,199 @@ index a538f4b..5b7f682 100644
 +    # its own count, and temp retirement is routine, so neither is included.
 +    missing_marked: int = 0
 +    recovered: int = 0
++    # Directories the input/output walks (or the output rescan's listing) listed; the
++    # models listing is not counted.
++    dirs_listed: int = 0
++    # os.stat calls on files in the reference sync, output-listing check, discovery,
++    # admission, seed, watch-list and enrich loops. Hashing's own stability stats are
++    # not counted.
++    files_statted: int = 0
++    # Time blocked at the pause gate.
++    paused_s: float = 0.0
      cancel_stage: str | None = None
      _emitted_keys: set[str] = field(default_factory=set)
  
-     def mark_emitted(self, key: str) -> bool:
-         """Return True the first call with `key` this scan, False every call after."""
-         if key in self._emitted_keys:
-             return False
-         self._emitted_keys.add(key)
-@@ -722,16 +726,18 @@ class _AssetSeeder:
+@@ -139,6 +161,16 @@ def _snapshot_progress(state: _ScanState) -> Progress:
+     )
+ 
+ 
++# The fast scan inserts INSERT_BATCH_SIZE files per write transaction and pauses after
++# each, so an upload or an output being registered gets the lock.
++INSERT_BATCH_SIZE = 200
++# A write waiting on the lock retries after sleeps of up to 100 ms; the pause outlasts one,
++# plus Windows' 15.6 ms timer tick.
++_BUSY_HANDLER_MAX_SLEEP_SECONDS = 0.1
++_TIMER_TICK_ALLOWANCE_SECONDS = 0.02
++INSERT_PAUSE_SECONDS = _BUSY_HANDLER_MAX_SLEEP_SECONDS + _TIMER_TICK_ALLOWANCE_SECONDS
++
++
+ class _AssetSeeder:
+     """Background asset scanning manager.
+ 
+@@ -159,6 +191,11 @@ class _AssetSeeder:
+         self._cancel_event = threading.Event()
+         self._run_gate = threading.Event()
+         self._run_gate.set()  # Start unpaused (set = running, clear = paused)
++        # Clear while a standalone prune holds the seeder (set = no prune running).
++        self._prune_idle = threading.Event()
++        self._prune_idle.set()
++        # Set by shutdown(): a standalone prune that has not started by then does not.
++        self._shutting_down = False
+         self._roots: tuple[RootType, ...] = ()
+         self._phase: ScanPhase = ScanPhase.FULL
+         self._compute_hashes: bool = False
+@@ -434,8 +471,14 @@ class _AssetSeeder:
+         Returns:
+             True if the scan thread joined cleanly; False on timeout.
+         """
++        with self._lock:
++            self._shutting_down = True
+         self.cancel()
++        # A standalone prune stops at its next batch once cancelled. One deadline
++        # covers both waits.
++        deadline = time.monotonic() + timeout
+         joined = self.wait(timeout=timeout)
++        joined = self.wait_for_standalone_prune(max(0.0, deadline - time.monotonic())) and joined
+         if not joined:
+             logging.warning(
+                 "Asset seeder thread did not exit within %ss",
+@@ -467,13 +510,18 @@ class _AssetSeeder:
+ 
+         Raises:
+             ScanInProgressError: If a scan is currently running
++            PruneCancelledError: If a cancel stopped it part way
+         """
+         with self._lock:
+             if self._state != State.IDLE:
+                 raise ScanInProgressError(
+                     "Cannot mark missing assets while scan is running"
+                 )
++            if self._shutting_down:
++                raise PruneCancelledError(0)
+             self._state = State.RUNNING
++            self._cancel_event.clear()
++            self._prune_idle.clear()
+ 
+         try:
+             if not dependencies_available():
+@@ -483,7 +531,16 @@ class _AssetSeeder:
+                 return 0
+ 
+             all_prefixes = get_owned_prefixes()
+-            marked = mark_missing_outside_prefixes_safely(all_prefixes)
++            # Not pausable (the API waits on it), but a cancel or shutdown stops it
++            # between batches: it runs on a worker thread that exit would wait for.
++            stopped = False
++
++            def should_stop() -> bool:
++                nonlocal stopped
++                stopped = self._cancel_event.is_set()
++                return stopped
++
++            marked = mark_missing_outside_prefixes_safely(all_prefixes, should_stop)
+             if marked is None:
+                 return None
+             emit(
+@@ -491,12 +548,32 @@ class _AssetSeeder:
+                 count=marked,
+                 stage=_ScanStage.MARK_MISSING.value,
+             )
++            if stopped:
++                logging.info("Marking missing assets cancelled after marking %d", marked)
++                raise PruneCancelledError(marked)
+             if marked > 0:
+                 logging.info("Marked %d references as missing", marked)
+             return marked
+         finally:
++            # The API runs this off the event loop, so a prompt can finish meanwhile
++            # and queue its output rescan; start it now. Not after a cancel: shutdown
++            # cancels, and a scan started here would run on into teardown. It stays
++            # queued for the next scan to start.
+             with self._lock:
+-                self._reset_to_idle()
++                try:
++                    if self._cancel_event.is_set():
++                        self._reset_to_idle()
++                    else:
++                        self._finish_and_start_pending()
++                finally:
++                    self._prune_idle.set()
++
++    def standalone_prune_running(self) -> bool:
++        return not self._prune_idle.is_set()
++
++    def wait_for_standalone_prune(self, timeout: float | None = None) -> bool:
++        """Block until no standalone prune holds the seeder. True unless it timed out."""
++        return self._prune_idle.wait(timeout)
+ 
+     def _reset_to_idle(self) -> None:
+         """Reset state to IDLE, preserving last progress. Caller must hold _lock."""
+@@ -539,7 +616,12 @@ class _AssetSeeder:
+         """
+         if not self._run_gate.is_set():
+             self._emit_event("assets.seed.paused", {})
+-        self._run_gate.wait()  # Blocks if paused
++        # Re-checked so a pause landing just after the check above still blocks, and is timed.
++        if not self._run_gate.is_set():
++            t_paused = time.perf_counter()
++            self._run_gate.wait()  # Blocks until resume or cancel
++            if self._scan_state is not None:
++                self._scan_state.paused_s += time.perf_counter() - t_paused
+         cancelled = self._is_cancelled()
+         if cancelled:
+             self._record_cancel_stage(stage)
+@@ -611,6 +693,8 @@ class _AssetSeeder:
+     def _run_scan(self) -> None:
+         """Main scan loop running in background thread."""
+         t_start = time.perf_counter()
++        # Per-thread CPU clock on Windows, macOS and Linux; excludes time blocked while paused.
++        cpu_start = time.thread_time()
+         roots = self._roots
+         phase = self._phase
+         root = roots[0] if len(roots) == 1 else None
+@@ -635,11 +719,13 @@ class _AssetSeeder:
+ 
+             if self._prune_first:
+                 all_prefixes = get_owned_prefixes()
+-                marked = mark_missing_outside_prefixes_safely(all_prefixes)
++                marked = mark_missing_outside_prefixes_safely(
++                    all_prefixes, lambda: self._check_pause_and_cancel(_ScanStage.PRUNING)
++                )
+                 marked_count = 0 if marked is None else marked
+                 if marked is None:
+                     self._add_error(
+-                        "Marking missing assets failed; scan continued without pruning"
++                        "Marking missing assets failed; scan continued with the prune incomplete"
+                     )
+                 else:
+                     emit(
+@@ -651,7 +737,9 @@ class _AssetSeeder:
+                     logging.info(
+                         "Marked %d refs as missing before scan", marked_count
+                     )
+-                sync_temp_references_safely(scan_state)
++                sync_temp_references_safely(
++                    scan_state, lambda: self._check_pause_and_cancel(_ScanStage.PRUNING)
++                )
+ 
+             if self._check_pause_and_cancel(_ScanStage.PRUNING):
+                 logging.info("Asset scan cancelled after pruning phase")
+@@ -708,6 +796,7 @@ class _AssetSeeder:
+                 return
+ 
+             elapsed = time.perf_counter() - t_start
++            cpu = time.thread_time() - cpu_start
+             logging.info(
+                 "Scan(%s, %s) done %.3fs: created=%d enriched=%d skipped=%d",
+                 roots,
+@@ -721,12 +810,18 @@ class _AssetSeeder:
+                 "seeder.scan_completed",
                  phase=phase.value,
                  elapsed_ms=round(elapsed * 1000),
++                cpu_ms=round(cpu * 1000),
++                paused_ms=round(scan_state.paused_s * 1000),
++                dirs_listed_count=scan_state.dirs_listed,
++                files_statted_count=scan_state.files_statted,
                  created=total_created,
                  enriched=total_enriched,
                  skipped=skipped_existing,
@@ -534,20 +1191,58 @@ index a538f4b..5b7f682 100644
                  root=root,
              )
  
-             self._emit_event(
-                 "assets.seed.completed",
-                 {
-                     "phase": phase.value,
-                     "total": total_paths,
-@@ -786,16 +792,27 @@ class _AssetSeeder:
-                             _start_paused=start_paused,
-                         ):
-                             logging.warning(
-                                 "Pending scan could not start (roots=%s, phase=%s)",
-                                 pending["roots"],
-                                 pending["phase"].value,
-                             )
- 
+@@ -749,6 +844,7 @@ class _AssetSeeder:
+                 "seeder.scan_failed",
+                 phase=phase.value,
+                 error_type=error_type(e),
++                error_kind=error_kind(e),
+                 root=root,
+             )
+             self._emit_event("assets.seed.error", {"message": str(e)})
+@@ -773,23 +869,39 @@ class _AssetSeeder:
+                         )
+             finally:
+                 with self._lock:
+-                    start_paused = self._state is State.PAUSED
+-                    self._reset_to_idle()
+-                    pending = self._pending_scan
+-                    if pending is not None:
+-                        self._pending_scan = None
+-                        if not self.start(
+-                            roots=pending["roots"],
+-                            phase=pending["phase"],
+-                            prune_first=False,
+-                            compute_hashes=pending["compute_hashes"],
+-                            _start_paused=start_paused,
+-                        ):
+-                            logging.warning(
+-                                "Pending scan could not start (roots=%s, phase=%s)",
+-                                pending["roots"],
+-                                pending["phase"].value,
+-                            )
++                    self._finish_and_start_pending()
++
++    def _finish_and_start_pending(self) -> None:
++        """Reset to IDLE, then start the scan queued while this run held the seeder,
++        paused if this run was. Caller must hold _lock."""
++        start_paused = self._state is State.PAUSED
++        self._reset_to_idle()
++        pending = self._pending_scan
++        if pending is not None:
++            self._pending_scan = None
++            if not self.start(
++                roots=pending["roots"],
++                phase=pending["phase"],
++                prune_first=False,
++                compute_hashes=pending["compute_hashes"],
++                _start_paused=start_paused,
++            ):
++                logging.warning(
++                    "Pending scan could not start (roots=%s, phase=%s)",
++                    pending["roots"],
++                    pending["phase"].value,
++                )
++
 +    @staticmethod
 +    def _emit_marked_missing(root: RootType, marked: int) -> None:
 +        """Report the rows a scan marked missing because their file was not found."""
@@ -558,62 +1253,82 @@ index a538f4b..5b7f682 100644
 +                stage=_ScanStage.FAST_SCAN.value,
 +                root=root,
 +            )
-+
+ 
      def _run_fast_phase(self, roots: tuple[RootType, ...]) -> tuple[int, int, int]:
          """Run phase 1: fast scan to create stub records.
- 
-         Returns:
-             Tuple of (total_created, skipped_existing, total_paths)
-         """
-         t_fast_start = time.perf_counter()
-         total_created = 0
-@@ -809,17 +826,19 @@ class _AssetSeeder:
-         scan_state = self._scan_state
-         for r in roots:
-             if self._check_pause_and_cancel(_ScanStage.FAST_SCAN):
-                 return total_created, skipped_existing, 0
-             if by_listing:
+@@ -814,7 +926,13 @@ class _AssetSeeder:
                  live_references = live_references_safely(r)
                  existing_paths.update(live_references)
              else:
+-                existing_paths.update(sync_root_safely(r, scan_state))
 +                marked_before = scan_state.missing_marked
-                 existing_paths.update(sync_root_safely(r, scan_state))
++                existing_paths.update(
++                    sync_root_safely(
++                        r, scan_state, lambda: self._check_pause_and_cancel(_ScanStage.FAST_SCAN)
++                    )
++                )
 +                self._emit_marked_missing(r, scan_state.missing_marked - marked_before)
          logging.debug(
              "Fast scan: sync_root phase took %.3fs (%d existing paths)",
              time.perf_counter() - t_sync,
-             len(existing_paths),
-         )
+@@ -826,15 +944,27 @@ class _AssetSeeder:
  
-         if self._check_pause_and_cancel(_ScanStage.FAST_SCAN):
-             return total_created, skipped_existing, 0
-@@ -829,17 +848,19 @@ class _AssetSeeder:
-         paths = walk.files if walk is not None else collect_paths_for_roots(roots)
+         t_collect = time.perf_counter()
+         walk = list_output_for_rescan() if by_listing else None
+-        paths = walk.files if walk is not None else collect_paths_for_roots(roots)
++        should_stop = lambda: self._check_pause_and_cancel(_ScanStage.FAST_SCAN)
++        paths = walk.files if walk is not None else collect_paths_for_roots(roots, scan_state, should_stop)
++        # A cancel during the walk leaves paths partial.
++        if should_stop():
++            return total_created, skipped_existing, 0
          logging.debug(
              "Fast scan: collect_paths took %.3fs (%d paths found)",
              time.perf_counter() - t_collect,
              len(paths),
          )
          if walk is not None:
-             vanished, unlisted = unlisted_references(live_references, walk.listings)
+-            vanished, unlisted = unlisted_references(live_references, walk.listings)
 -            mark_unlisted_references_missing_safely("output", vanished)
++            scan_state.dirs_listed += walk.dirs_listed
++            vanished, unlisted = unlisted_references(live_references, walk.listings, scan_state)
 +            marked_before = scan_state.missing_marked
-+            mark_unlisted_references_missing_safely("output", vanished, scan_state)
++            mark_unlisted_references_missing_safely(
++                "output",
++                vanished,
++                scan_state,
++                lambda: self._check_pause_and_cancel(_ScanStage.FAST_SCAN),
++            )
 +            self._emit_marked_missing("output", scan_state.missing_marked - marked_before)
              logging.debug(
                  "Fast scan: output listing: %d dirs listed, %d rows retired, "
                  "%d rows skipped (not listed, still on disk)",
-                 walk.dirs_listed,
-                 len(vanished),
-                 unlisted,
-             )
-         total_paths = len(paths)
-@@ -882,17 +903,17 @@ class _AssetSeeder:
-                     total_created,
+@@ -857,6 +987,7 @@ class _AssetSeeder:
+             existing_paths,
+             enable_metadata_extraction=False,
+             progress=scan_state,
++            should_stop=should_stop,
+         )
+         logging.debug(
+             "Fast scan: build_asset_specs took %.3fs (%d specs, %d skipped)",
+@@ -869,11 +1000,10 @@ class _AssetSeeder:
+         if self._check_pause_and_cancel(_ScanStage.FAST_SCAN):
+             return total_created, skipped_existing, total_paths
+ 
+-        batch_size = 500
+         last_progress_time = time.perf_counter()
+         progress_interval = 1.0
+ 
+-        for i in range(0, len(specs), batch_size):
++        for i in range(0, len(specs), INSERT_BATCH_SIZE):
+             if self._check_pause_and_cancel(_ScanStage.FAST_SCAN):
+                 logging.info(
+                     "Fast scan cancelled after %d/%d files (created=%d)",
+@@ -883,11 +1013,11 @@ class _AssetSeeder:
                  )
                  return total_created, skipped_existing, total_paths
  
-             batch = specs[i : i + batch_size]
+-            batch = specs[i : i + batch_size]
++            batch = specs[i : i + INSERT_BATCH_SIZE]
              batch_tags = {t for spec in batch for t in spec["tags"]}
              created = 0
              try:
@@ -622,22 +1337,167 @@ index a538f4b..5b7f682 100644
                  total_created += created
                  if batch_error is not None:
                      raise batch_error
-             except MemoryError:
-                 # Recording this as a batch failure would march the scan through
-                 # every remaining batch while the process is out of memory.
-                 raise
-             except Exception as e:
-
+@@ -905,7 +1035,11 @@ class _AssetSeeder:
+                     i,
+                     created,
+                 )
+-                emit("seeder.batch_insert_failed", error_type=error_type(e))
++                emit(
++                    "seeder.batch_insert_failed",
++                    error_type=error_type(e),
++                    error_kind=error_kind(e),
++                )
+ 
+             scanned = i + len(batch)
+             now = time.perf_counter()
+@@ -923,8 +1057,11 @@ class _AssetSeeder:
+                 )
+                 last_progress_time = now
+ 
++            if scanned < len(specs):
++                time.sleep(INSERT_PAUSE_SECONDS)
++
+         self._update_progress(scanned=len(specs), created=total_created)
+-        tick_watch_list()
++        tick_watch_list(scan_state)
+         logging.info(
+             "Fast scan complete: %.3fs total (created=%d, skipped=%d, total_paths=%d)",
+             time.perf_counter() - t_fast_start,
+@@ -945,7 +1082,7 @@ class _AssetSeeder:
+         with create_session() as session:
+             drain_pending_verifications(session)
+             session.commit()
+-            tick_watch_list()
++            tick_watch_list(scan_state)
+             for _ in range(3):
+                 drain_transition_queue(session)
+                 session.commit()
+diff --git a/comfy/ldm/minimax/model.py b/comfy/ldm/minimax/model.py
+index c4b7a68a..440d47ef 100644
+--- a/comfy/ldm/minimax/model.py
++++ b/comfy/ldm/minimax/model.py
+@@ -558,6 +558,49 @@ class MiniMaxH3Model(nn.Module):
+             rows.append(r.to(device))
+         return torch.cat(rows, dim=0) if rows else None
+ 
++    def _embed_and_pack(self, video_x, audio_x, context, layout, payload, transformer_options):
++        device = video_x.device
++        dtype = context.dtype
++        img_update = layout.img_update.to(device)
++        audio_update = layout.audio_update.to(device)
++        video_rows = patchify_video(video_x.to(torch.float32), self.patch_size)
++        audio_rows = pack_audio(audio_x.to(torch.float32))
++        cond_video_rows = self._cond_video_rows(payload, device)
++        cond_audio_rows = self._cond_audio_rows(payload, device)
++
++        all_video_rows = video_rows
++        if cond_video_rows is not None:
++            all_video_rows = torch.empty(img_update.shape[0], video_rows.shape[1], dtype=torch.float32, device=device)
++            all_video_rows[~img_update] = cond_video_rows
++            all_video_rows[img_update] = video_rows
++        all_audio_rows = audio_rows
++        if cond_audio_rows is not None:
++            all_audio_rows = torch.empty(audio_update.shape[0], audio_rows.shape[1], dtype=torch.float32, device=device)
++            all_audio_rows[~audio_update] = cond_audio_rows
++            all_audio_rows[audio_update] = audio_rows
++
++        video_embed = self.video_patch_proj(all_video_rows).to(dtype)
++        audio_embed = self.audio_patch_proj(all_audio_rows).to(dtype)
++        text_states = context[0]
++        if text_states.shape[-1] != self.hidden_size:
++            text_states = self.token_refiner(self.condition_proj(text_states),
++                                             transformer_options=transformer_options)
++
++        # segments are contiguous: assemble by slices, embed rows follow segment order
++        h = torch.empty(layout.seq_len, self.hidden_size, dtype=dtype, device=device)
++        voff = aoff = 0
++        for a, b, kind in layout.segments:
++            n = b - a
++            if kind == "text":
++                h[a:b] = text_states
++            elif kind in ("cond", "ref_img", "video"):
++                h[a:b] = video_embed[voff:voff + n]
++                voff += n
++            else:  # ref_audio / audio
++                h[a:b] = audio_embed[aoff:aoff + n]
++                aoff += n
++        return h
++
+     def forward(self, x, timestep, context, transformer_options={}, minimax_payload=None, denoise_mask=None, audio_denoise_mask=None, **kwargs):
+         # the sampler carries the audio as (sigma_v / sigma_a) * x_audio; undo it outside
+         # the wrappers so they and the network see the stream's own latent and velocity
+@@ -693,45 +736,7 @@ class MiniMaxH3Model(nn.Module):
+             else:
+                 mod_segments.append((a, b, row_base + seg_tag[kind]))
+ 
+-        # embed
+-        img_update = layout.img_update.to(device)
+-        audio_update = layout.audio_update.to(device)
+-        video_rows = patchify_video(video_x.to(torch.float32), self.patch_size)
+-        audio_rows = pack_audio(audio_x.to(torch.float32))
+-        cond_video_rows = self._cond_video_rows(payload, device)
+-        cond_audio_rows = self._cond_audio_rows(payload, device)
+-
+-        all_video_rows = video_rows
+-        if cond_video_rows is not None:
+-            all_video_rows = torch.empty(img_update.shape[0], video_rows.shape[1], dtype=torch.float32, device=device)
+-            all_video_rows[~img_update] = cond_video_rows
+-            all_video_rows[img_update] = video_rows
+-        all_audio_rows = audio_rows
+-        if cond_audio_rows is not None:
+-            all_audio_rows = torch.empty(audio_update.shape[0], audio_rows.shape[1], dtype=torch.float32, device=device)
+-            all_audio_rows[~audio_update] = cond_audio_rows
+-            all_audio_rows[audio_update] = audio_rows
+-
+-        video_embed = self.video_patch_proj(all_video_rows).to(dtype)
+-        audio_embed = self.audio_patch_proj(all_audio_rows).to(dtype)
+-        text_states = context[0]
+-        if text_states.shape[-1] != self.hidden_size:
+-            text_states = self.token_refiner(self.condition_proj(text_states),
+-                                             transformer_options=transformer_options)
+-
+-        # segments are contiguous: assemble by slices, embed rows follow segment order
+-        h = torch.empty(layout.seq_len, self.hidden_size, dtype=dtype, device=device)
+-        voff = aoff = 0
+-        for a, b, kind in layout.segments:
+-            n = b - a
+-            if kind == "text":
+-                h[a:b] = text_states
+-            elif kind in ("cond", "ref_img", "video"):
+-                h[a:b] = video_embed[voff:voff + n]
+-                voff += n
+-            else:  # ref_audio / audio
+-                h[a:b] = audio_embed[aoff:aoff + n]
+-                aoff += n
++        h = self._embed_and_pack(video_x, audio_x, context, layout, payload, transformer_options)
+ 
+         t_vals = torch.tensor(unique_t, dtype=torch.float32, device=device)
+         if self.use_adaln_curves:
 diff --git a/comfy/ldm/minimax/vae.py b/comfy/ldm/minimax/vae.py
-index ffb3584..53b5ccb 100644
+index ffb35846..f4dd9ae8 100644
 --- a/comfy/ldm/minimax/vae.py
 +++ b/comfy/ldm/minimax/vae.py
-@@ -421,16 +421,17 @@ class MiniMaxH3VideoVAE(nn.Module):
-         space_down=(2, 2, 2, 2, 1, 1),
-         time_down=(1, 2, 2, 1, 1, 1),
-         clip_length=17,
-         token_drop=3,
-         tile_size=256,
+@@ -269,7 +269,8 @@ class FeedForward(nn.Module):
+ 
+     def forward(self, x, pre_norm, residual, residual_scale):
+         # norm, gated silu and residual addcmul fold into the INT8 kernels
+-        h = comfy.ops.linear_input_act(self.w1, x, "rms_norm", pre_norm.weight, pre_norm.eps)
++        with comfy.ops.CastBiasWeightContext(pre_norm if pre_norm.weight is not None else None, x, offloadable=True) as (weight, bias):
++            h = comfy.ops.linear_input_act(self.w1, x, "rms_norm", weight, pre_norm.eps)
+         return comfy.ops.linear_input_act(
+             self.w2, h, "swiglu", residual=residual, residual_scale=residual_scale)
+ 
+@@ -290,7 +291,8 @@ class Attention(nn.Module):
+     def forward(self, x, rotary_pos_emb, pre_norm, residual, residual_scale):
+         batch_size, seq_len, _ = x.shape
+ 
+-        qkv = comfy.ops.linear_input_act(self.to_qkv, x, "rms_norm", pre_norm.weight, pre_norm.eps)
++        with comfy.ops.CastBiasWeightContext(pre_norm if pre_norm.weight is not None else None, x, offloadable=True) as (weight, bias):
++            qkv = comfy.ops.linear_input_act(self.to_qkv, x, "rms_norm", weight, pre_norm.eps)
+         qkv = qkv.view(batch_size, seq_len, -1, 3 * self.dim_head)
+         query, key, value = torch.chunk(qkv, 3, dim=-1)
+ 
+@@ -426,6 +428,7 @@ class MiniMaxH3VideoVAE(nn.Module):
          tile_overlap_min=64,
          tiling=True,
          operations=ops,
@@ -645,17 +1505,7 @@ index ffb3584..53b5ccb 100644
      ):
          super().__init__()
          self.vae_ratio = int(math.prod(space_down))
-         self.vae_ratio_t = int(math.prod(time_down))
- 
-         # temporal chunking parameters
-         self.clip_length = clip_length
-         self.token_drop = token_drop
-@@ -456,16 +457,17 @@ class MiniMaxH3VideoVAE(nn.Module):
-         )
-         self.quant_conv = ops.Conv3d(z_channels * 2, 2 * embed_dim, 1)
-         self.post_quant_conv = ops.Conv3d(embed_dim, z_channels, 1)
-         self.decoder = ViT3DDecoder(
-             patch_size=self.vae_ratio,
+@@ -461,6 +464,7 @@ class MiniMaxH3VideoVAE(nn.Module):
              patch_size_t=self.vae_ratio_t,
              in_channels=z_channels,
              out_channels=out_ch,
@@ -663,22 +1513,61 @@ index ffb3584..53b5ccb 100644
              operations=operations,
          )
  
-         self.register_buffer("latents_mean", torch.tensor(LATENTS_MEAN))
-         self.register_buffer("latents_std", torch.tensor(LATENTS_STD))
-         self.register_buffer("pixel_mean", torch.tensor(IMAGENET_MEAN).view(1, 3, 1, 1, 1), persistent=False)
-         self.register_buffer("pixel_std", torch.tensor(IMAGENET_STD).view(1, 3, 1, 1, 1), persistent=False)
- 
-
 diff --git a/comfy/ldm/qwen_image21/model.py b/comfy/ldm/qwen_image21/model.py
-index 8e2d6ad..b804b9e 100644
+index 8e2d6ad5..e50d6c3c 100644
 --- a/comfy/ldm/qwen_image21/model.py
 +++ b/comfy/ldm/qwen_image21/model.py
-@@ -390,14 +390,17 @@ class QwenImage21Transformer2DModel(nn.Module):
-                 def block_wrap(args):
-                     return {"img": block(args["img"], mod, args["pe"], attn_fn, prefix_len, args["transformer_options"])}
-                 args = {"img": hidden_states, "vec": temb, "pe": pe, "mod": mod, "attn_fn": attn_fn, "prefix_len": prefix_len, "transformer_options": transformer_options}
-                 hidden_states = blocks_replace[("single_block", i)](args, {"original_block": block_wrap})["img"]
-             else:
+@@ -12,7 +12,7 @@ import comfy.rmsnorm
+ from comfy.ldm.flux.layers import EmbedND, timestep_embedding
+ from comfy.ldm.flux.math import apply_rope1
+ from comfy.ldm.lightricks.model import TimestepEmbedding
+-from comfy.ldm.modules.attention import ComfyAttention, optimized_attention
++from comfy.ldm.modules.attention import AttentionTensorContainer, ComfyAttention, optimized_attention
+ from comfy.ldm.wan.model_animate2 import PoseBranchCache
+ 
+ 
+@@ -104,6 +104,7 @@ class Attention(nn.Module):
+             q, k = comfy.quant_ops.ck.rms_rope(q, k, pe, q_scale, k_scale, self.norm_q.eps)
+             comfy.ops.uncast_bias_weight(self.norm_q, q_scale, None, q_stream)
+             comfy.ops.uncast_bias_weight(self.norm_k, k_scale, None, k_stream)
++        q, k, v = AttentionTensorContainer(q), AttentionTensorContainer(k), AttentionTensorContainer(v)
+         return self.to_out[0](attn_fn(q, k, v, self.heads, preferred_attention=self.comfy_attention))
+ 
+ 
+@@ -196,11 +197,18 @@ class QwenImage21FunControl(nn.Module):
+ def block_causal_attention(segments, transformer_options={}, cache=None, block_index=0, prefix_len=0):
+     # segments: (start, end, mask); text segments get a causal mask, image blocks attend to everything before their end
+     def attn(q, k, v, heads, preferred_attention=None):
++        q, k, v = q.take(), k.take(), v.take()
+         if cache is not None:
+             # K and V stacked on dim 1 so batch stays first and quantized rows are per token and head
+             cache.put(block_index, torch.stack([k[:, :prefix_len], v[:, :prefix_len]], dim=1))
+-        outs = [optimized_attention(q[:, start:end].flatten(2), k[:, :end].flatten(2), v[:, :end].flatten(2), heads, mask=mask, transformer_options=transformer_options, preferred_attention=preferred_attention)
+-                for start, end, mask in segments]
++        outs = []
++        for i, (start, end, mask) in enumerate(segments):
++            query = AttentionTensorContainer(q[:, start:end].flatten(2))
++            key = AttentionTensorContainer(k[:, :end].flatten(2))
++            value = AttentionTensorContainer(v[:, :end].flatten(2))
++            if i == len(segments) - 1:
++                del q, k, v
++            outs.append(optimized_attention(query, key, value, heads, mask=mask, transformer_options=transformer_options, preferred_attention=preferred_attention))
+         return torch.cat(outs, dim=1) if len(outs) > 1 else outs[0]
+     return attn
+ 
+@@ -208,7 +216,10 @@ def block_causal_attention(segments, transformer_options={}, cache=None, block_i
+ def prefix_cached_attention(prefix_k, prefix_v, transformer_options={}):
+     # target-only queries: block-causal reduces to full attention over [cached prefix, target]
+     def attn(q, k, v, heads, preferred_attention=None):
+-        return optimized_attention(q.flatten(2), torch.cat([prefix_k, k], dim=1).flatten(2), torch.cat([prefix_v, v], dim=1).flatten(2), heads, transformer_options=transformer_options, preferred_attention=preferred_attention)
++        q = AttentionTensorContainer(q.take().flatten(2))
++        k = AttentionTensorContainer(torch.cat([prefix_k, k.take()], dim=1).flatten(2))
++        v = AttentionTensorContainer(torch.cat([prefix_v, v.take()], dim=1).flatten(2))
++        return optimized_attention(q, k, v, heads, transformer_options=transformer_options, preferred_attention=preferred_attention)
+     return attn
+ 
+ 
+@@ -395,6 +406,9 @@ class QwenImage21Transformer2DModel(nn.Module):
                  hidden_states = block(hidden_states, mod, pe, attn_fn, prefix_len, transformer_options)
              for p in patches.get("single_block", []):
                  hidden_states = p({"img": hidden_states, "x": x, "block_index": i, "transformer_options": transformer_options})["img"]
@@ -688,20 +1577,11 @@ index 8e2d6ad..b804b9e 100644
  
          comfy.model_prefetch.prefetch_queue_pop(prefetch_queue, x.device, None, malloc_scope="block")
          comfy.model_prefetch.malloc_graph_end()
-         hidden_states = self.norm_out(hidden_states[:, prefix_len:], temb[:-1])
-         hidden_states = self.proj_out(hidden_states)
-         return hidden_states.transpose(1, 2).reshape(B, self.out_channels, H, W)
-
 diff --git a/comfy/sd.py b/comfy/sd.py
-index 73a35aa..50176f7 100644
+index 73a35aaa..50176f79 100644
 --- a/comfy/sd.py
 +++ b/comfy/sd.py
-@@ -1026,17 +1026,18 @@ class VAE:
-                 #Force cast it for --disable-dynamic-vram users until there is a true core fix.
-                 if not comfy.memory_management.aimdo_enabled:
-                     self.disable_offload = True
-             elif "decoder.transformer_blocks.0.scale1" in sd and "encoder.down.5.block.0.conv1.weight" in sd:  # MiniMax H3 video VAE
-                 minimax_ops = comfy.ops.disable_weight_init
+@@ -1031,7 +1031,8 @@ class VAE:
                  minimax_quant = comfy.utils.detect_layer_quantization(sd, "")
                  if minimax_quant is not None:  # int8+convrot quantized decoder
                      minimax_ops = comfy.ops.mixed_precision_ops(minimax_quant, dtype if dtype is not None else torch.float16)
@@ -711,22 +1591,11 @@ index 73a35aa..50176f7 100644
                  self.latent_channels = 24
                  self.latent_dim = 3
                  # frames 17k+5 <-> latents 5k+2, 16x spatial
-                 self.upscale_ratio = (lambda a: max(1, (a - 2) // 5 * 17 + 5), 16, 16)
-                 self.upscale_index_formula = (4, 16, 16)
-                 self.downscale_ratio = (lambda a: max(1, (a - 5) // 17 * 5 + 2) if a > 1 else 1, 16, 16)
-                 self.downscale_index_formula = (4, 16, 16)
-                 self.working_dtypes = [torch.float16, torch.float32]
-
 diff --git a/comfy_api/latest/_input/video_types.py b/comfy_api/latest/_input/video_types.py
-index 600e116..8b4936a 100644
+index 600e116c..8b4936a4 100644
 --- a/comfy_api/latest/_input/video_types.py
 +++ b/comfy_api/latest/_input/video_types.py
-@@ -32,17 +32,17 @@ class VideoInput(ABC):
-         crf: float | None = None,
-         color_space: str | None = None,
-         preset: str | None = None,
-     ):
-         """
+@@ -37,7 +37,7 @@ class VideoInput(ABC):
          Abstract method to save the video input to a file.
  
          bit_depth selects the encoded bit depth; None keeps the video's native depth.
@@ -735,22 +1604,11 @@ index 600e116..8b4936a 100644
          preset selects the H.264 encoder speed/compression trade-off (e.g. "ultrafast");
          None uses the encoder default. Ignored for other codecs.
          color_space="sRGB" selects SDR BT.709/sRGB, "HDR" selects BT.2020/HLG, and "HDR PQ"
-         selects BT.2020/PQ. Bit depth is selected independently.
-         Tensor-created videos default to sRGB when color_space is None. Loaded videos keep matching recognized native color
-         properties; other input pixels must already use the selected color space.
-         """
-         pass
-
 diff --git a/comfy_api/latest/_input_impl/video_types.py b/comfy_api/latest/_input_impl/video_types.py
-index d32b482..b0e331b 100644
+index d32b4826..b0e331b8 100644
 --- a/comfy_api/latest/_input_impl/video_types.py
 +++ b/comfy_api/latest/_input_impl/video_types.py
-@@ -205,24 +205,25 @@ def video_stream_color_space(stream) -> str | None:
-     if stream is None:
-         return None
-     return VIDEO_TRANSFER_COLOR_SPACES.get(stream.color_trc)
- 
- 
+@@ -210,14 +210,15 @@ def video_stream_color_space(stream) -> str | None:
  def video_encoder_options(
      codec: VideoCodec, crf: float | None, preset: str | None = None
  ) -> dict[str, str]:
@@ -771,22 +1629,11 @@ index d32b482..b0e331b 100644
      return options
  
  
- def webm_streams_compatible(streams) -> bool:
-     for stream in streams:
-         allowed_codecs = WEBM_STREAM_CODECS.get(stream.type)
-         if allowed_codecs is not None and stream.codec_context is not None and stream.codec.canonical_name not in allowed_codecs:
-             return False
-
 diff --git a/comfy_api/latest/_io.py b/comfy_api/latest/_io.py
-index cdaaba9..4115bdc 100644
+index cdaaba99..4115bdcd 100644
 --- a/comfy_api/latest/_io.py
 +++ b/comfy_api/latest/_io.py
-@@ -1311,16 +1311,135 @@ class DynamicSlot(ComfyTypeI):
-         finalized_id = finalize_prefix(curr_prefix)
-         if finalized_id in live_inputs:
-             inputs = value[1]["inputs"]
-             parse_class_inputs(out_dict, live_inputs, inputs, curr_prefix)
-             # add self to inputs
+@@ -1316,6 +1316,125 @@ class DynamicSlot(ComfyTypeI):
              out_dict[input_type][finalized_id] = value
              out_dict["dynamic_paths"][finalized_id] = finalize_prefix(curr_prefix, curr_prefix[-1])
  
@@ -912,17 +1759,7 @@ index cdaaba9..4115bdc 100644
  @comfytype(io_type="IMAGECOMPARE")
  class ImageCompare(ComfyTypeI):
    Type = dict
- 
-   class Input(WidgetInput):
-       def __init__(self, id: str, display_name: str=None, optional=False, tooltip: str=None,
-                    socketless: bool=True, advanced: bool=None):
-           super().__init__(id, display_name, optional, tooltip, None, None, socketless, None, None, None, None, advanced)
-@@ -1524,27 +1643,31 @@ def get_dynamic_input_func(io_type: str) -> Callable[[dict[str, Any], dict[str,
- 
- def setup_dynamic_input_funcs():
-     # Autogrow.Input
-     register_dynamic_input_func(Autogrow.io_type, Autogrow._expand_schema_for_dynamic)
-     # DynamicCombo.Input
+@@ -1529,6 +1648,8 @@ def setup_dynamic_input_funcs():
      register_dynamic_input_func(DynamicCombo.io_type, DynamicCombo._expand_schema_for_dynamic)
      # DynamicSlot.Input
      register_dynamic_input_func(DynamicSlot.io_type, DynamicSlot._expand_schema_for_dynamic)
@@ -931,11 +1768,7 @@ index cdaaba9..4115bdc 100644
  
  if len(DYNAMIC_INPUT_LOOKUP) == 0:
      setup_dynamic_input_funcs()
- 
- class V3Data(TypedDict):
-     hidden_inputs: dict[str, Any]
-     'Dictionary where the keys are the hidden input ids and the values are the values of the hidden inputs.'
-     dynamic_paths: dict[str, Any]
+@@ -1540,6 +1661,8 @@ class V3Data(TypedDict):
      'Dictionary where the keys are the input ids and the values dictate how to turn the inputs into a nested dictionary.'
      dynamic_paths_default_value: dict[str, Any]
      'Dictionary where the keys are the input ids and the values are a string from DynamicPathsDefaultValue for the inputs if value is None.'
@@ -944,17 +1777,7 @@ index cdaaba9..4115bdc 100644
      create_dynamic_tuple: bool
      'When True, the value of the dynamic input will be in the format (value, path_key).'
  
- class HiddenHolder:
-     def __init__(self, unique_id: str, prompt: Any,
-                  extra_pnginfo: Any, dynprompt: Any,
-                  auth_token_comfy_org: str, api_key_comfy_org: str,
-                  comfy_usage_source: str = None, execution_list: Any = None, **kwargs):
-@@ -1646,26 +1769,29 @@ class PriceBadgeDepends:
-         if not isinstance(self.widgets, list) or any(not isinstance(x, str) for x in self.widgets):
-             raise ValueError("PriceBadgeDepends.widgets must be a list[str].")
-         if not isinstance(self.inputs, list) or any(not isinstance(x, str) for x in self.inputs):
-             raise ValueError("PriceBadgeDepends.inputs must be a list[str].")
-         if not isinstance(self.input_groups, list) or any(not isinstance(x, str) for x in self.input_groups):
+@@ -1651,16 +1774,19 @@ class PriceBadgeDepends:
              raise ValueError("PriceBadgeDepends.input_groups must be a list[str].")
  
      def as_dict(self, schema_inputs: list["Input"]) -> dict[str, Any]:
@@ -983,17 +1806,7 @@ index cdaaba9..4115bdc 100644
  
          # Enrich widgets with type information, raising error for unknown widgets
          widgets_data: list[dict[str, str]] = []
-         for w in self.widgets:
-             if w not in input_types:
-                 raise ValueError(
-                     f"PriceBadge depends_on.widgets references unknown widget '{w}'. "
-                     f"Available widgets: {list(input_types.keys())}"
-@@ -1883,31 +2009,34 @@ class Schema:
-         return info
- 
- def get_finalized_class_inputs(d: dict[str, Any], live_inputs: dict[str, Any], include_hidden=False) -> tuple[dict[str, Any], V3Data]:
-     out_dict = {
-         "required": {},
+@@ -1888,6 +2014,7 @@ def get_finalized_class_inputs(d: dict[str, Any], live_inputs: dict[str, Any], i
          "optional": {},
          "dynamic_paths": {},
          "dynamic_paths_default_value": {},
@@ -1001,11 +1814,7 @@ index cdaaba9..4115bdc 100644
      }
      d = d.copy()
      # ignore hidden for parsing
-     hidden = d.pop("hidden", None)
-     parse_class_inputs(out_dict, live_inputs, d)
-     if hidden is not None and include_hidden:
-         out_dict["hidden"] = hidden
-     v3_data = {}
+@@ -1899,10 +2026,12 @@ def get_finalized_class_inputs(d: dict[str, Any], live_inputs: dict[str, Any], i
      dynamic_paths = out_dict.pop("dynamic_paths", None)
      if dynamic_paths is not None and len(dynamic_paths) > 0:
          v3_data["dynamic_paths"] = dynamic_paths
@@ -1019,17 +1828,7 @@ index cdaaba9..4115bdc 100644
      return out_dict, hidden, v3_data
  
  def parse_class_inputs(out_dict: dict[str, Any], live_inputs: dict[str, Any], curr_dict: dict[str, Any], curr_prefix: list[str] | None=None) -> None:
-     for input_type, inner_d in curr_dict.items():
-         for id, value in inner_d.items():
-             io_type = value[0]
-             if io_type in DYNAMIC_INPUT_LOOKUP:
-                 # dynamic inputs need to be handled with lookup functions
-@@ -1916,66 +2045,92 @@ def parse_class_inputs(out_dict: dict[str, Any], live_inputs: dict[str, Any], cu
-                 dynamic_input_func(out_dict, live_inputs, value, input_type, new_prefix)
-             else:
-                 # non-dynamic inputs get directly transferred
-                 finalized_id = finalize_prefix(curr_prefix, id)
-                 out_dict[input_type][finalized_id] = value
+@@ -1921,11 +2050,23 @@ def parse_class_inputs(out_dict: dict[str, Any], live_inputs: dict[str, Any], cu
                  if curr_prefix:
                      out_dict["dynamic_paths"][finalized_id] = finalized_id
  
@@ -1053,12 +1852,7 @@ index cdaaba9..4115bdc 100644
          add_to_dict_v1(i, input)
      return input
  
- def add_to_dict_v1(i: Input, d: dict):
-     key = "optional" if i.optional else "required"
-     as_dict = i.as_dict()
-     # for v1, we don't want to include the optional key
-     as_dict.pop("optional", None)
-     d.setdefault(key, {})[i.id] = (i.get_io_type(), as_dict)
+@@ -1938,10 +2079,12 @@ def add_to_dict_v1(i: Input, d: dict):
  
  class DynamicPathsDefaultValue:
      EMPTY_DICT = "empty_dict"
@@ -1072,16 +1866,7 @@ index cdaaba9..4115bdc 100644
      if paths is None:
          return values
      values = values.copy()
- 
-     result = {}
- 
-     create_tuple = v3_data.get("create_dynamic_tuple", False)
- 
-     for key, path in paths.items():
-         parts = path.split(".")
-         current = result
- 
-         for i, p in enumerate(parts):
+@@ -1958,19 +2101,31 @@ def build_nested_inputs(values: dict[str, Any], v3_data: V3Data):
              is_last = (i == len(parts) - 1)
  
              if is_last:
@@ -1119,17 +1904,7 @@ index cdaaba9..4115bdc 100644
      return values
  
  
- class _ComfyNodeBaseInternal(_ComfyNodeInternal):
-     """Common base class for storing internal methods and properties; DO NOT USE for defining nodes."""
- 
-     RELATIVE_PYTHON_MODULE = None
-     SCHEMA = None
-@@ -2533,16 +2688,17 @@ __all__ = [
-     "Tracks",
-     "Dict",
-     "Array",
-     "Color",
-     # Dynamic Types
+@@ -2538,6 +2693,7 @@ __all__ = [
      "MatchType",
      "DynamicCombo",
      "Autogrow",
@@ -1137,22 +1912,11 @@ index cdaaba9..4115bdc 100644
      # Other classes
      "HiddenHolder",
      "Hidden",
-     "NodeInfoV1",
-     "Schema",
-     "ComfyNode",
-     "NodeOutput",
-     "add_to_dict_v1",
-
 diff --git a/comfy_extras/nodes_minimax_h3.py b/comfy_extras/nodes_minimax_h3.py
-index 1ad3c6a..755d38b 100644
+index 1ad3c6a4..755d38b0 100644
 --- a/comfy_extras/nodes_minimax_h3.py
 +++ b/comfy_extras/nodes_minimax_h3.py
-@@ -18,16 +18,17 @@ import comfy.audio
- import nodes
- import comfy.model_management
- import comfy.model_prefetch
- import comfy.model_sampling
- import comfy.nested_tensor
+@@ -23,6 +23,7 @@ import comfy.nested_tensor
  import comfy.patcher_extension
  import comfy.utils
  import node_helpers
@@ -1160,17 +1924,7 @@ index 1ad3c6a..755d38b 100644
  from comfy.ldm.minimax.model import FRAME_PER_TOKEN, FRAME_RESCALE
  from comfy.ldm.minimax.vae import IMAGENET_MEAN
  from comfy_api.latest import ComfyExtension, io
- 
- CANVAS_MULTIPLE = 32
- BASE_SHORT_EDGE = 768
- MAX_PIXELS = 768 * 1344
- REF_IMAGE_SHORT_EDGE = 2048
-@@ -133,16 +134,17 @@ class MiniMaxH3ImageToVideo(io.ComfyNode):
-                 io.Image.Input("last_frame", optional=True),
-             ],
-             outputs=[io.Conditioning.Output(display_name="positive"), io.Latent.Output()],
-         )
- 
+@@ -138,6 +139,7 @@ class MiniMaxH3ImageToVideo(io.ComfyNode):
      @classmethod
      def execute(cls, clip, vae, prompt, width, height, length,
                  first_frame=None, last_frame=None) -> io.NodeOutput:
@@ -1178,17 +1932,7 @@ index 1ad3c6a..755d38b 100644
          latent, frame_count = _empty_av_latent(width, height, length)
  
          images = []
-         keyframes = []
-         if first_frame is not None:
-             # geometry anchor: plain stretch to canvas
-             img = _resize(first_frame[:1], width, height, "disabled")
-             images.append(img)
-@@ -284,16 +286,17 @@ class MiniMaxH3ReferenceToVideo(io.ComfyNode):
-                         prefix="ref_audio_", min=0, max=3)),
-             ],
-             outputs=[io.Conditioning.Output(display_name="positive"), io.Latent.Output()],
-         )
- 
+@@ -289,6 +291,7 @@ class MiniMaxH3ReferenceToVideo(io.ComfyNode):
      @classmethod
      def execute(cls, clip, prompt, width, height, length, ref_image_size="match", vae=None, audio_vae=None,
                  ref_images=None, ref_videos=None, ref_video_audios=None, ref_audios=None) -> io.NodeOutput:
@@ -1196,22 +1940,11 @@ index 1ad3c6a..755d38b 100644
          latent, frame_count = _empty_av_latent(width, height, length)
  
          ref_items = []   # for the tokenizer presentation, in request order
-         ref_blocks = []  # for the DiT payload, same order
- 
-         for img in (ref_images or {}).values():
-             if img is None:
-                 continue
-
 diff --git a/comfy_extras/nodes_video.py b/comfy_extras/nodes_video.py
-index 70876a9..a753211 100644
+index 70876a96..a753211e 100644
 --- a/comfy_extras/nodes_video.py
 +++ b/comfy_extras/nodes_video.py
-@@ -85,17 +85,17 @@ def _save_video_codec_input(supported_codecs: list[str], *, optional=False, hidd
-                     io.DynamicCombo.Input(
-                         "encoding",
-                         display_name="encoding mode",
-                         options=[
-                             io.DynamicCombo.Option("auto", []),
+@@ -90,7 +90,7 @@ def _save_video_codec_input(supported_codecs: list[str], *, optional=False, hidd
                              io.DynamicCombo.Option(
                                  "re-encode",
                                  [
@@ -1220,17 +1953,7 @@ index 70876a9..a753211 100644
                                  ],
                              ),
                          ],
-                         optional=True,
-                         tooltip="Automatic preserves compatible H.264 streams. Re-encode applies custom encoding options.",
-                     ),
-                 ],
-             )
-@@ -108,17 +108,17 @@ def _save_video_codec_input(supported_codecs: list[str], *, optional=False, hidd
-                     io.DynamicCombo.Input(
-                         "encoding",
-                         display_name="encoding mode",
-                         options=[
-                             io.DynamicCombo.Option("auto", []),
+@@ -113,7 +113,7 @@ def _save_video_codec_input(supported_codecs: list[str], *, optional=False, hidd
                              io.DynamicCombo.Option(
                                  "re-encode",
                                  [
@@ -1239,22 +1962,11 @@ index 70876a9..a753211 100644
                                  ],
                              ),
                          ],
-                         optional=True,
-                         tooltip="Automatic preserves compatible AV1 streams. Re-encode applies custom encoding options.",
-                     ),
-                 ],
-             )
-
 diff --git a/execution.py b/execution.py
-index 2e4cf64..af8908f 100644
+index 2e4cf646..af8908fa 100644
 --- a/execution.py
 +++ b/execution.py
-@@ -16,17 +16,17 @@ from comfy.cli_args import args, get_console_log_level
- import comfy.memory_management
- import comfy.model_management
- import comfy.model_patcher
- import comfy.model_prefetch
- import comfy.system_memory
+@@ -21,7 +21,7 @@ import comfy.system_memory
  import comfy_aimdo.model_vbar
  from comfy.internal_logging import detail
  
@@ -1263,17 +1975,7 @@ index 2e4cf64..af8908f 100644
  import nodes
  from comfy_execution.caching import (
      BasicCache,
-     CacheKeySetID,
-     CacheKeySetInputSignature,
-     NullCache,
-     HierarchicalCache,
-     LRUCache,
-@@ -288,17 +288,17 @@ async def _async_map_node_over_list(prompt_id, unique_id, obj, input_data_all, f
-                 # otherwise, use class instance to populate/reuse some fields
-                 else:
-                     type_obj = type(obj)
-                     type_obj.VALIDATE_CLASS()
-                     class_clone = type_obj.PREPARE_CLASS_CLONE(v3_data)
+@@ -293,7 +293,7 @@ async def _async_map_node_over_list(prompt_id, unique_id, obj, input_data_all, f
                  f = make_locked_method_func(type_obj, func, class_clone)
                  # in case of dynamic inputs, restructure inputs to expected nested dict
                  if v3_data is not None:
@@ -1282,17 +1984,7 @@ index 2e4cf64..af8908f 100644
              # V1
              else:
                  f = getattr(obj, func)
-             if inspect.iscoroutinefunction(f):
-                 async def async_wrapper(f, prompt_id, unique_id, list_index, args):
-                     with CurrentNodeContext(prompt_id, unique_id, list_index):
-                         return await f(**args)
-                 task = asyncio.create_task(async_wrapper(f, prompt_id, unique_id, index, args=inputs))
-@@ -724,16 +724,18 @@ class PromptExecutor:
-             except Exception as e:
-                 _cache_logger.warning(f"Cache provider {provider.__class__.__name__} error on {event}: {e}")
- 
-     def execute(self, prompt, prompt_id, extra_data={}, execute_outputs=[]):
-         asyncio.run(self.execute_async(prompt, prompt_id, extra_data, execute_outputs))
+@@ -729,6 +729,8 @@ class PromptExecutor:
  
      async def execute_async(self, prompt, prompt_id, extra_data={}, execute_outputs=[]):
          set_preview_method(extra_data.get("preview_method"))
@@ -1301,17 +1993,7 @@ index 2e4cf64..af8908f 100644
  
          nodes.interrupt_processing(False)
          self.prompt_model_tracker.start()
- 
-         if "client_id" in extra_data:
-             self.server.client_id = extra_data["client_id"]
-         else:
-             self.server.client_id = None
-@@ -875,17 +877,27 @@ async def validate_inputs(prompt_id, prompt, item, validated, visiting=None):
-     valid = True
- 
-     v3_data = None
-     validate_function_inputs = []
-     validate_has_kwargs = False
+@@ -880,7 +882,17 @@ async def validate_inputs(prompt_id, prompt, item, validated, visiting=None):
      if issubclass(obj_class, _ComfyNodeInternal):
          obj_class: _io._ComfyNodeBaseInternal
          class_inputs = obj_class.INPUT_TYPES()
@@ -1330,30 +2012,18 @@ index 2e4cf64..af8908f 100644
          validate_function_name = "validate_inputs"
          validate_function = first_real_override(obj_class, validate_function_name)
      else:
-         class_inputs = obj_class.INPUT_TYPES()
-         validate_function_name = "VALIDATE_INPUTS"
-         validate_function = getattr(obj_class, validate_function_name, None)
-     if validate_function is not None:
-         argspec = inspect.getfullargspec(validate_function)
-
 diff --git a/latent_preview.py b/latent_preview.py
-index f505940..143d6d1 100644
+index f5059400..143d6d1f 100644
 --- a/latent_preview.py
 +++ b/latent_preview.py
-@@ -1,21 +1,79 @@
+@@ -1,3 +1,6 @@
 +import os
 +import tempfile
 +import time
  import torch
  from PIL import Image
  from comfy.cli_args import args, LatentPreviewMethod
- from comfy.taesd.taesd import TAESD
- from comfy.sd import VAE
- import comfy.model_management
- import comfy.model_prefetch
- import folder_paths
- import comfy.utils
- import logging
+@@ -11,6 +14,61 @@ import logging
  
  default_preview_method = args.preview_method
  
@@ -1415,17 +2085,7 @@ index f505940..143d6d1 100644
  MAX_PREVIEW_RESOLUTION = args.preview_size
  VIDEO_TAES = ["taehv", "lighttaew2_2", "lighttaew2_1", "lighttaehy1_5", "taeltx_2", "taeh3"]
  
- def preview_to_image(latent_image, do_scale=True):
-         if do_scale:
-             latents_ubyte = (((latent_image + 1.0) / 2.0).clamp(0, 1)  # change scale from -1..1 to 0..1
-                                 .mul(0xFF)  # to 0..255
-                                 )
-@@ -126,16 +184,28 @@ def prepare_callback(model, steps, x0_output_dict=None):
- 
-     previewer = get_previewer(model.load_device, model.model.latent_format)
- 
-     pbar = comfy.utils.ProgressBar(steps)
-     def callback(step, x0, x, total_steps):
+@@ -131,6 +189,18 @@ def prepare_callback(model, steps, x0_output_dict=None):
          if x0_output_dict is not None:
              x0_output_dict["x0"] = x0
  
@@ -1444,8 +2104,3 @@ index f505940..143d6d1 100644
          preview_bytes = None
          if previewer:
              if x0.is_nested:
-                 x0 = x0.tensors[0]
-             preview_bytes = previewer.decode_latent_to_preview_image(preview_format, x0)
-         pbar.update_absolute(step + 1, total_steps, preview_bytes)
-     return callback
- 

@@ -169,9 +169,9 @@ pause
 - `--enable-dynamic-vram`：dynamic VRAM（ROCm <7.14 需手动开启，7.14+ 默认）
 - `--disable-smart-memory`：激进卸载到系统内存，配合 dynamic-vram 进一步压低驻留
 - `--reserve-vram 6`：预留 6GB 显存给 OS/桌面软件，避免生成期切桌面卡顿/驱动超时
-- `--disable-api-nodes`：不加载 API 节点 + 前端不联网；`/prompt` 提交不受影响
+- `--disable-api-nodes`：不加载 API 节点 + 前端不联网；`/prompt` 提交不受影响。⚠️ v0.39.2 起该开关已废弃（上游 #16672），等价改为 `--offline` 或 `--disable-partner-nodes`；本机 3 个启动脚本当前版本仍兼容运行，文档如实保留原值
 - `--cache-none`：不缓存节点执行结果（每次运行全部节点重算），降 RAM/VRAM 占用，代价是重复执行
-- `--use-ck-attention`：Comfy Kitchen attention（int8 内核，`comfy_kitchen` 0.2.36，HIP 后端实测可用）。实测采样 **2.70x** 加速（总耗时口径 2.02x）、峰值显存反降 0.40 GiB。⚠️ **双重风险**：(1) 缺失或 kernel 不支持时**直接 `exit(-1)` 拒启**（`attention.py:918`）；(2) ⚠️⚠️ **0.2.36 存在正确性回归**——存活 token 跨过 **64**（HIP 核 tile 宽度）时输出崩坏，**Qwen-Image 2.1 已确认**（绿/紫伪影且无异常抛出），**必须改用 `run_amd_gpu_no_ck_attention.bat`**。H3 文本编码器不受影响（`small_input=True` 提前返回 `attention_basic`），**H3 DiT 主干已于 2026-10-02 实测确认安全**（124 帧 SSIM 0.98849、四路判据全排除崩坏、锐度 +5.50%）。详见 `CK注意力回归问题调查报告.md` + `ck_ab_20261002\` + `Plan.md §12`
+- `--use-ck-attention`：Comfy Kitchen attention（int8 内核，`comfy_kitchen` 0.2.37，HIP 后端实测可用）。实测采样 **2.70x** 加速（总耗时口径 2.02x）、峰值显存反降 0.40 GiB。⚠️ **双重风险**：(1) 缺失或 kernel 不支持时**直接 `exit(-1)` 拒启**（`attention.py:918`）；(2) ⚠️⚠️ **0.2.36/0.2.37 存在正确性回归**——存活 token 跨过 **64**（HIP 核 tile 宽度）时输出崩坏，**Qwen-Image 2.1 已确认**（绿/紫伪影且无异常抛出），**必须改用 `run_amd_gpu_no_ck_attention.bat`**（0.2.37 仅首个 commit 修 #214 NaN，此回归未修复）。H3 文本编码器不受影响（`small_input=True` 提前返回 `attention_basic`），**H3 DiT 主干已于 2026-10-02 实测确认安全**（124 帧 SSIM 0.98849、四路判据全排除崩坏、锐度 +5.50%）。详见 `CK注意力回归问题调查报告.md` + `ck_ab_20261002\` + `Plan.md §12`
 
 就记住：**不要上 `--lowvram/--novram`**（会主动把权重卸到系统内存，徒增 swap 风险）；**不要 `--use-sage-attention`**（AMD 无支持 + H3 全局 sage 出纯噪声）；**Qwen-Image 不要用带 ck 的脚本**。
 
@@ -186,7 +186,7 @@ pause
 3. **R2V**：ref2va + 参考图/视频/音频。
 4. 全程任务管理器观察：GPU 显存三段低峰，系统「已提交内存」不趋近上限（无 swap 迹象）。
 5. 换机前置检查：跑 `python vram_model.py` 过装载判据（`Plan.md §3.6`）；确认 `comfy-kitchen` 已装且 HIP int8 kernel 可用（`python -c "from comfy_kitchen import int8_attention_is_available; print(int8_attention_is_available())"` 应为 `True`），否则带 ck 的脚本会 `exit(-1)`。
-6. ⚠️ **core 版本**：本文件早期所有验证基于 **v0.34.0**，实机现已升级到 **v0.38.0**（`fb2315f1`，2026-09-29）。要复现本文件结论就 checkout 0.34.0；跟实机一致就用 0.38.0 并复核。
+6. ⚠️ **core 版本**：本文件早期所有验证基于 **v0.34.0**，实机现已升级到 **v0.39.2**（`3c1b7a17`，2026-10-08，此前 0.38.0/`fb2315f1`）。要复现本文件结论就 checkout 0.34.0；跟实机一致就用 v0.39.2 并复核。
 
 ---
 
