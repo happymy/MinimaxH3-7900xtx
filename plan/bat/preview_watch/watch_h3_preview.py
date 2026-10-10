@@ -46,7 +46,7 @@
   1. ComfyUI\\latent_preview.py          —— 帧预览主战场：模块级状态（_frame_preview_
      enabled / vae / dir / count）、_save_frame_preview() 解码中途 x0 落盘、采样 callback
      挂载（step % every == 0，即 step 0 首批 + 每 total_steps//4 步一批）、set_frame_preview_enabled/
-     vae() 开关与注册、load_frame_preview_flag() 读全局开关 flag（%TEMP%\\iw-preview-flag.txt）。
+     vae() 开关与注册、load_frame_preview_flag() 读全局开关 flag（ComfyUI user 目录）。
   2. ComfyUI\\comfy_extras\\nodes_minimax_h3.py —— H3 节点注册视频 VAE：
      MiniMaxH3ImageToVideo.execute（约 142 行）与 MiniMaxH3ReferenceToVideo.execute
      （约 294 行）各加一行 latent_preview.set_frame_preview_vae(vae)。全量覆盖
@@ -89,7 +89,7 @@
     轮询加速:     python watch_h3_preview.py --interval 2
     全局帧预览开关: python watch_h3_preview.py --preview on     # 全局开启（含 step 0 卸载 DiT），写完即退出
                   python watch_h3_preview.py --preview off    # 全局关闭（也不卸载 DiT），写完即退出
-                  # flag 文件: %TEMP%\\iw-preview-flag.txt（1=开 / 0=关），下次任务起效；
+                  # flag 文件: ComfyUI\\user\\iw-preview-flag.txt（1=开 / 0=关），下次任务起效；
                   # 不传则维持任务默认（extra_data.preview_file），启动横幅会显示当前全局状态
     退出:         Ctrl+C 随时退出，不影响 ComfyUI 上正在跑的任务
 """
@@ -131,11 +131,24 @@ def now():
     return time.strftime('%H:%M:%S')
 
 
-FLAG_FILE = os.path.join(tempfile.gettempdir(), 'iw-preview-flag.txt')
+def _resolve_flag_file():
+    """flag 持久位置：优先<ComfyUI-last>\\ComfyUI_windows_portable\\ComfyUI\\user\\
+    （本脚本 layout 固定为 ComfyUI-last\\plan\\bat\\preview_watch，上溯 3 级即 ComfyUI-last）。
+    探测不到（脚本被单独拷走）时退回 %TEMP%，此时提示用户。"""
+    here = os.path.dirname(os.path.realpath(__file__))
+    cand = os.path.abspath(os.path.join(
+        here, '..', '..', '..',
+        'ComfyUI_windows_portable', 'ComfyUI', 'user', 'iw-preview-flag.txt'))
+    if os.path.isdir(os.path.dirname(cand)):
+        return cand
+    return os.path.join(tempfile.gettempdir(), 'iw-preview-flag.txt')
+
+
+FLAG_FILE = _resolve_flag_file()
 
 
 def read_preview_flag():
-    """读全局帧预览开关 flag（%TEMP%\\iw-preview-flag.txt，--preview on/off 写入）。
+    """读全局帧预览开关 flag（ComfyUI user 目录 iw-preview-flag.txt，--preview on/off 写入）。
     不存在/内容非法 -> None（维持 per-request 默认）；1/0 -> True/False（全局强覆盖）。"""
     try:
         with open(FLAG_FILE, 'r', encoding='utf-8') as f:
@@ -172,7 +185,7 @@ def main():
     ap.add_argument('--open', action='store_true',
                     help='首个预览目录出现时用资源管理器再打开一次（内核默认已自动弹过一次）')
     ap.add_argument('--preview', choices=['on', 'off'], default=None,
-                    help='全局帧预览开关（写 %%TEMP%%\\iw-preview-flag.txt，下次任务起效）：'
+                    help='全局帧预览开关（写 ComfyUI\\user\\iw-preview-flag.txt，下次任务起效）：'
                          'on=开启（含 step 0 提前卸载 DiT 副作用），off=关闭（也不卸载 DiT）；'
                          '该模式写完即退出，不进入监视')
     a = ap.parse_args()

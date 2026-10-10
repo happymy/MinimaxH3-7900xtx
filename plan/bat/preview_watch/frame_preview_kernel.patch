@@ -53,7 +53,7 @@ index 448e3d29..e91ef892 100644
          nodes.interrupt_processing(False)
          self.prompt_model_tracker.start()
 diff --git a/latent_preview.py b/latent_preview.py
-index f5059400..d3c7bf46 100644
+index f5059400..91acfaf1 100644
 --- a/latent_preview.py
 +++ b/latent_preview.py
 @@ -1,3 +1,6 @@
@@ -63,7 +63,7 @@ index f5059400..d3c7bf46 100644
  import torch
  from PIL import Image
  from comfy.cli_args import args, LatentPreviewMethod
-@@ -11,6 +14,80 @@ import logging
+@@ -11,6 +14,82 @@ import logging
  
  default_preview_method = args.preview_method
  
@@ -74,10 +74,12 @@ index f5059400..d3c7bf46 100644
 +_frame_preview_dir: str | None = None
 +_frame_preview_count = 0
 +
-+# 全局帧预览开关（方案 3，2026-10-10）：%TEMP%\iw-preview-flag.txt，内容 "1"/"0"。
++# 全局帧预览开关（方案 3，2026-10-10）：持久放在 ComfyUI 的 user 数据目录
++# （%TEMP% 会被系统磁盘清理误删，已弃用 2026-10-10），内容 "1"/"0"。
 +# 由 watch_h3_preview.py --preview on/off 写入；存在则作用于每个任务、并连带 step 0 卸载 DiT
 +# （二者同一把锁），不存在则维持 per-request 默认（extra_data.preview_file，默认 True）。
-+_frame_preview_flag_file = os.path.join(tempfile.gettempdir(), "iw-preview-flag.txt")
++_frame_preview_flag_file = os.path.join(
++    os.path.dirname(os.path.realpath(__file__)), "user", "iw-preview-flag.txt")
 +
 +
 +def load_frame_preview_flag() -> bool | None:
@@ -144,7 +146,7 @@ index f5059400..d3c7bf46 100644
  MAX_PREVIEW_RESOLUTION = args.preview_size
  VIDEO_TAES = ["taehv", "lighttaew2_2", "lighttaew2_1", "lighttaehy1_5", "taeltx_2", "taeh3"]
  
-@@ -131,6 +208,18 @@ def prepare_callback(model, steps, x0_output_dict=None):
+@@ -131,6 +210,18 @@ def prepare_callback(model, steps, x0_output_dict=None):
          if x0_output_dict is not None:
              x0_output_dict["x0"] = x0
  

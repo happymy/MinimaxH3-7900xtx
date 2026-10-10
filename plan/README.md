@@ -27,7 +27,7 @@ MiniMax H3 本机部署与实测的**全部资产地图**。**439 个文件 / 37
 > |---|---|---|
 > | `bat\分段归档\*.mp4` / `*.png`、`bat\<族>\h3_*.mp4` | 生成产物（10.37 MB：mp4 20 个 / 7.46 MB + 分段归档 `*_frame.png` 24 张 / 2.91 MB），应由 `ComfyUI\output\` 承接 | 实机同名路径 |
 > | `bat\<族>\img\`、`bat\测试素材\` | 本机测试素材（14 个 / 13.2 MB：各 `<族>\img` 12 个 / 11.32 MB + 测试素材 2 个 / 1.89 MB） | 实机同名路径 |
-> | ~~`bat\preview_watch - 副本\`~~ | **2026-10-10 实测已清理，不再存在**；原为旧版脚本快照（`watch_h3_preview.py` 10,440 B，比现行 16,899 B 少约 6.5 KB + `.pyc`） | — |
+> | ~~`bat\preview_watch - 副本\`~~ | **2026-10-10 实测已清理，不再存在**；原为旧版脚本快照（`watch_h3_preview.py` 10,440 B，比现行 17,657 B 少约 7 KB + `.pyc`） | — |
 > | `ck_ab_20261002\` 的可视化 PNG / mp4 | 对照图与自检样本（PNG 11 + mp4 2 = 13 个 / 7.49 MB，含 `_frames_a|b\` 比对帧各 1 张）；**指标 json 与脚本已入库** | 实机同名路径 |
 > | `LynnReal light VAE 待长测（0.39.2 已定案）\` | **light VAE 换装副本（104 文件 / 2.34 MB）**：v0.39.2 适配脚本 + 工作流的 light VAE 版（54 处 `VIDEO_VAE` 换 `minimax_h3_lynnreal_light_vae_int8_convrot.safetensors`，音频 VAE 仍 fp32），供长期验证；**正式目录保持 fp16 未动**，验证定论后再决定是否入库 | 实机同名路径 |
 > | `bat\_run_4b.log`、`*.err.log`（全目录） | 运行 stderr / 驱动日志，可重生成 | 实机同名路径 |
@@ -288,10 +288,10 @@ OPENER.open(req, timeout=15)
 
 | 文件 | 大小 | 作用 |
 |---|---:|---|
-| `watch_h3_preview.py` | 16,899 B | 主脚本：轮询 `GET /queue` 判任务起止，再轮询 `%TEMP%\iw-preview-*` 打印内核落盘的真实预览帧（成片分辨率，非 34×60 小图）。**零侵入**，不干预生成、不重复解码、不改工作流。**v2026-10-10 起支持全局帧预览开关：`watch_h3_preview.bat --preview on/off`**（见下方「全局帧预览开关」） |
+| `watch_h3_preview.py` | 17,657 B | 主脚本：轮询 `GET /queue` 判任务起止，再轮询 `%TEMP%\iw-preview-*` 打印内核落盘的真实预览帧（成片分辨率，非 34×60 小图）。**零侵入**，不干预生成、不重复解码、不改工作流。**v2026-10-10 起支持全局帧预览开关：`watch_h3_preview.bat --preview on/off`**（见下方「全局帧预览开关」） |
 | `watch_h3_preview.bat` | 80 B | Windows 入口（`chcp 65001` → `python watch_h3_preview.py %*`） |
-| `frame_preview_kernel.patch` | 6,897 B | **帧预览功能的本地改动权威版**，3 个文件（2026-10-10 随全局开关重算，官方 v0.39.2 HEAD 上 apply 后与实机工作树逐字节一致） |
-| `official-0.38.0-to-current.patch` | 95,455 B | 官方 `0.38.0` tag → 当前内核（v0.39.2）的完整复刻 = 帧预览 3 文件 + 12 个官方上游文件（15 文件）。**2026-10-08 随内核升级 v0.39.2 重算**（此前 14 文件版对应 0.38.0）；**2026-10-10 随全局开关再重算**，v0.38.0 干净树上 apply 后 3 个本地文件 blob 与实机逐一相同 |
+| `frame_preview_kernel.patch` | 7,019 B | **帧预览功能的本地改动权威版**，3 个文件（2026-10-10 随全局开关重算两次，官方 v0.39.2 HEAD 上 apply 后与实机工作树逐字节一致） |
+| `official-0.38.0-to-current.patch` | 95,577 B | 官方 `0.38.0` tag → 当前内核（v0.39.2）的完整复刻 = 帧预览 3 文件 + 12 个官方上游文件（15 文件）。**2026-10-08 随内核升级 v0.39.2 重算**（此前 14 文件版对应 0.38.0）；**2026-10-10 随全局开关再重算两次**，v0.38.0 干净树上 apply 后 3 个本地文件 blob 与实机逐一相同 |
 
 > 不入库：~~`bat\preview_watch - 副本\`~~（**2026-10-10 已清理，实机不存在**；原旧版快照 10,440 B + `.pyc`，见 §1 未入库表）、`bat\测试素材\`。
 
@@ -330,7 +330,7 @@ if step % every == 0:
 
 **问题**：预览产帧与 step 0 卸载 DiT 是同一把锁，想关预览省显存时就无法单独保留卸载效果；且开关只在任务请求的 `extra_data.preview_file` 上，手动 `POST /prompt` 不传则永远默认开。
 
-**解决**：内核补丁新增全局 flag `%TEMP%\iw-preview-flag.txt`（内容 `1`=开 / `0`=关），**存在则强覆盖所有任务**（连 `preview_file=false` 的请求也强制打开；连默认 true 也强制关闭），不存在则维持 per-request 默认。用 `watch_h3_preview.bat --preview on/off` 写 flag，写完立即退出；无参数启动监视时横幅显示当前全局状态：
+**解决**：内核补丁新增全局 flag `ComfyUI\user\iw-preview-flag.txt`（内容 `1`=开 / `0`=关），**存在则强覆盖所有任务**（连 `preview_file=false` 的请求也强制打开；连默认 true 也强制关闭），不存在则维持 per-request 默认。用 `watch_h3_preview.bat --preview on/off` 写 flag，写完立即退出；无参数启动监视时横幅显示当前全局状态：
 
 ```bat
 watch_h3_preview.bat --preview on     :: 全局开启帧预览（含 step 0 卸载 DiT），下次任务起效
