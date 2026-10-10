@@ -1963,7 +1963,7 @@ index 70876a96..a753211e 100644
                              ),
                          ],
 diff --git a/execution.py b/execution.py
-index 2e4cf646..af8908fa 100644
+index 2e4cf646..e91ef892 100644
 --- a/execution.py
 +++ b/execution.py
 @@ -21,7 +21,7 @@ import comfy.system_memory
@@ -1971,7 +1971,7 @@ index 2e4cf646..af8908fa 100644
  from comfy.internal_logging import detail
  
 -from latent_preview import set_preview_method
-+from latent_preview import set_frame_preview_enabled, set_frame_preview_vae, set_preview_method
++from latent_preview import set_frame_preview_enabled, set_frame_preview_vae, set_preview_method, load_frame_preview_flag
  import nodes
  from comfy_execution.caching import (
      BasicCache,
@@ -1984,16 +1984,20 @@ index 2e4cf646..af8908fa 100644
              # V1
              else:
                  f = getattr(obj, func)
-@@ -729,6 +729,8 @@ class PromptExecutor:
+@@ -729,6 +729,12 @@ class PromptExecutor:
  
      async def execute_async(self, prompt, prompt_id, extra_data={}, execute_outputs=[]):
          set_preview_method(extra_data.get("preview_method"))
-+        set_frame_preview_enabled(extra_data.get("preview_file", True))
++        _preview_flag = load_frame_preview_flag()
++        if _preview_flag is None:
++            set_frame_preview_enabled(extra_data.get("preview_file", True))
++        else:
++            set_frame_preview_enabled(_preview_flag)  # 全局 flag 强覆盖（方案 3）
 +        set_frame_preview_vae(None)
  
          nodes.interrupt_processing(False)
          self.prompt_model_tracker.start()
-@@ -880,7 +882,17 @@ async def validate_inputs(prompt_id, prompt, item, validated, visiting=None):
+@@ -880,7 +886,17 @@ async def validate_inputs(prompt_id, prompt, item, validated, visiting=None):
      if issubclass(obj_class, _ComfyNodeInternal):
          obj_class: _io._ComfyNodeBaseInternal
          class_inputs = obj_class.INPUT_TYPES()
@@ -2013,7 +2017,7 @@ index 2e4cf646..af8908fa 100644
          validate_function = first_real_override(obj_class, validate_function_name)
      else:
 diff --git a/latent_preview.py b/latent_preview.py
-index f5059400..143d6d1f 100644
+index f5059400..d3c7bf46 100644
 --- a/latent_preview.py
 +++ b/latent_preview.py
 @@ -1,3 +1,6 @@
@@ -2023,7 +2027,7 @@ index f5059400..143d6d1f 100644
  import torch
  from PIL import Image
  from comfy.cli_args import args, LatentPreviewMethod
-@@ -11,6 +14,61 @@ import logging
+@@ -11,6 +14,80 @@ import logging
  
  default_preview_method = args.preview_method
  
@@ -2033,6 +2037,25 @@ index f5059400..143d6d1f 100644
 +_frame_preview_vae: VAE | None = None
 +_frame_preview_dir: str | None = None
 +_frame_preview_count = 0
++
++# 全局帧预览开关（方案 3，2026-10-10）：%TEMP%\iw-preview-flag.txt，内容 "1"/"0"。
++# 由 watch_h3_preview.py --preview on/off 写入；存在则作用于每个任务、并连带 step 0 卸载 DiT
++# （二者同一把锁），不存在则维持 per-request 默认（extra_data.preview_file，默认 True）。
++_frame_preview_flag_file = os.path.join(tempfile.gettempdir(), "iw-preview-flag.txt")
++
++
++def load_frame_preview_flag() -> bool | None:
++    """读全局帧预览 flag 文件；不存在/内容非法 -> None（维持任务默认）。"""
++    try:
++        with open(_frame_preview_flag_file, "r", encoding="utf-8") as f:
++            v = f.read().strip().lower()
++        if v in ("1", "on", "true", "yes", "开启", "开"):
++            return True
++        if v in ("0", "off", "false", "no", "关闭", "关"):
++            return False
++    except OSError:
++        pass
++    return None
 +
 +
 +def set_frame_preview_enabled(enabled: bool):
@@ -2085,7 +2108,7 @@ index f5059400..143d6d1f 100644
  MAX_PREVIEW_RESOLUTION = args.preview_size
  VIDEO_TAES = ["taehv", "lighttaew2_2", "lighttaew2_1", "lighttaehy1_5", "taeltx_2", "taeh3"]
  
-@@ -131,6 +189,18 @@ def prepare_callback(model, steps, x0_output_dict=None):
+@@ -131,6 +208,18 @@ def prepare_callback(model, steps, x0_output_dict=None):
          if x0_output_dict is not None:
              x0_output_dict["x0"] = x0
  

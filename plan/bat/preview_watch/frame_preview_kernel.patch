@@ -2,12 +2,7 @@ diff --git a/comfy_extras/nodes_minimax_h3.py b/comfy_extras/nodes_minimax_h3.py
 index 1ad3c6a4..755d38b0 100644
 --- a/comfy_extras/nodes_minimax_h3.py
 +++ b/comfy_extras/nodes_minimax_h3.py
-@@ -18,16 +18,17 @@ import comfy.audio
- import nodes
- import comfy.model_management
- import comfy.model_prefetch
- import comfy.model_sampling
- import comfy.nested_tensor
+@@ -23,6 +23,7 @@ import comfy.nested_tensor
  import comfy.patcher_extension
  import comfy.utils
  import node_helpers
@@ -15,17 +10,7 @@ index 1ad3c6a4..755d38b0 100644
  from comfy.ldm.minimax.model import FRAME_PER_TOKEN, FRAME_RESCALE
  from comfy.ldm.minimax.vae import IMAGENET_MEAN
  from comfy_api.latest import ComfyExtension, io
- 
- CANVAS_MULTIPLE = 32
- BASE_SHORT_EDGE = 768
- MAX_PIXELS = 768 * 1344
- REF_IMAGE_SHORT_EDGE = 2048
-@@ -133,16 +134,17 @@ class MiniMaxH3ImageToVideo(io.ComfyNode):
-                 io.Image.Input("last_frame", optional=True),
-             ],
-             outputs=[io.Conditioning.Output(display_name="positive"), io.Latent.Output()],
-         )
- 
+@@ -138,6 +139,7 @@ class MiniMaxH3ImageToVideo(io.ComfyNode):
      @classmethod
      def execute(cls, clip, vae, prompt, width, height, length,
                  first_frame=None, last_frame=None) -> io.NodeOutput:
@@ -33,17 +18,7 @@ index 1ad3c6a4..755d38b0 100644
          latent, frame_count = _empty_av_latent(width, height, length)
  
          images = []
-         keyframes = []
-         if first_frame is not None:
-             # geometry anchor: plain stretch to canvas
-             img = _resize(first_frame[:1], width, height, "disabled")
-             images.append(img)
-@@ -284,16 +286,17 @@ class MiniMaxH3ReferenceToVideo(io.ComfyNode):
-                         prefix="ref_audio_", min=0, max=3)),
-             ],
-             outputs=[io.Conditioning.Output(display_name="positive"), io.Latent.Output()],
-         )
- 
+@@ -289,6 +291,7 @@ class MiniMaxH3ReferenceToVideo(io.ComfyNode):
      @classmethod
      def execute(cls, clip, prompt, width, height, length, ref_image_size="match", vae=None, audio_vae=None,
                  ref_images=None, ref_videos=None, ref_video_audios=None, ref_audios=None) -> io.NodeOutput:
@@ -51,71 +26,44 @@ index 1ad3c6a4..755d38b0 100644
          latent, frame_count = _empty_av_latent(width, height, length)
  
          ref_items = []   # for the tokenizer presentation, in request order
-         ref_blocks = []  # for the DiT payload, same order
- 
-         for img in (ref_images or {}).values():
-             if img is None:
-                 continue
 diff --git a/execution.py b/execution.py
-index 448e3d29..af8908fa 100644
+index 448e3d29..e91ef892 100644
 --- a/execution.py
 +++ b/execution.py
-@@ -16,17 +16,17 @@ from comfy.cli_args import args, get_console_log_level
- import comfy.memory_management
- import comfy.model_management
- import comfy.model_patcher
- import comfy.model_prefetch
- import comfy.system_memory
+@@ -21,7 +21,7 @@ import comfy.system_memory
  import comfy_aimdo.model_vbar
  from comfy.internal_logging import detail
  
 -from latent_preview import set_preview_method
-+from latent_preview import set_frame_preview_enabled, set_frame_preview_vae, set_preview_method
++from latent_preview import set_frame_preview_enabled, set_frame_preview_vae, set_preview_method, load_frame_preview_flag
  import nodes
  from comfy_execution.caching import (
      BasicCache,
-     CacheKeySetID,
-     CacheKeySetInputSignature,
-     NullCache,
-     HierarchicalCache,
-     LRUCache,
-@@ -724,16 +724,18 @@ class PromptExecutor:
-             except Exception as e:
-                 _cache_logger.warning(f"Cache provider {provider.__class__.__name__} error on {event}: {e}")
- 
-     def execute(self, prompt, prompt_id, extra_data={}, execute_outputs=[]):
-         asyncio.run(self.execute_async(prompt, prompt_id, extra_data, execute_outputs))
+@@ -729,6 +729,12 @@ class PromptExecutor:
  
      async def execute_async(self, prompt, prompt_id, extra_data={}, execute_outputs=[]):
          set_preview_method(extra_data.get("preview_method"))
-+        set_frame_preview_enabled(extra_data.get("preview_file", True))
++        _preview_flag = load_frame_preview_flag()
++        if _preview_flag is None:
++            set_frame_preview_enabled(extra_data.get("preview_file", True))
++        else:
++            set_frame_preview_enabled(_preview_flag)  # 全局 flag 强覆盖（方案 3）
 +        set_frame_preview_vae(None)
  
          nodes.interrupt_processing(False)
          self.prompt_model_tracker.start()
- 
-         if "client_id" in extra_data:
-             self.server.client_id = extra_data["client_id"]
-         else:
-             self.server.client_id = None
 diff --git a/latent_preview.py b/latent_preview.py
-index f5059400..143d6d1f 100644
+index f5059400..d3c7bf46 100644
 --- a/latent_preview.py
 +++ b/latent_preview.py
-@@ -1,21 +1,79 @@
+@@ -1,3 +1,6 @@
 +import os
 +import tempfile
 +import time
  import torch
  from PIL import Image
  from comfy.cli_args import args, LatentPreviewMethod
- from comfy.taesd.taesd import TAESD
- from comfy.sd import VAE
- import comfy.model_management
- import comfy.model_prefetch
- import folder_paths
- import comfy.utils
- import logging
+@@ -11,6 +14,80 @@ import logging
  
  default_preview_method = args.preview_method
  
@@ -125,6 +73,25 @@ index f5059400..143d6d1f 100644
 +_frame_preview_vae: VAE | None = None
 +_frame_preview_dir: str | None = None
 +_frame_preview_count = 0
++
++# 全局帧预览开关（方案 3，2026-10-10）：%TEMP%\iw-preview-flag.txt，内容 "1"/"0"。
++# 由 watch_h3_preview.py --preview on/off 写入；存在则作用于每个任务、并连带 step 0 卸载 DiT
++# （二者同一把锁），不存在则维持 per-request 默认（extra_data.preview_file，默认 True）。
++_frame_preview_flag_file = os.path.join(tempfile.gettempdir(), "iw-preview-flag.txt")
++
++
++def load_frame_preview_flag() -> bool | None:
++    """读全局帧预览 flag 文件；不存在/内容非法 -> None（维持任务默认）。"""
++    try:
++        with open(_frame_preview_flag_file, "r", encoding="utf-8") as f:
++            v = f.read().strip().lower()
++        if v in ("1", "on", "true", "yes", "开启", "开"):
++            return True
++        if v in ("0", "off", "false", "no", "关闭", "关"):
++            return False
++    except OSError:
++        pass
++    return None
 +
 +
 +def set_frame_preview_enabled(enabled: bool):
@@ -177,17 +144,7 @@ index f5059400..143d6d1f 100644
  MAX_PREVIEW_RESOLUTION = args.preview_size
  VIDEO_TAES = ["taehv", "lighttaew2_2", "lighttaew2_1", "lighttaehy1_5", "taeltx_2", "taeh3"]
  
- def preview_to_image(latent_image, do_scale=True):
-         if do_scale:
-             latents_ubyte = (((latent_image + 1.0) / 2.0).clamp(0, 1)  # change scale from -1..1 to 0..1
-                                 .mul(0xFF)  # to 0..255
-                                 )
-@@ -126,16 +184,28 @@ def prepare_callback(model, steps, x0_output_dict=None):
- 
-     previewer = get_previewer(model.load_device, model.model.latent_format)
- 
-     pbar = comfy.utils.ProgressBar(steps)
-     def callback(step, x0, x, total_steps):
+@@ -131,6 +208,18 @@ def prepare_callback(model, steps, x0_output_dict=None):
          if x0_output_dict is not None:
              x0_output_dict["x0"] = x0
  
@@ -206,8 +163,3 @@ index f5059400..143d6d1f 100644
          preview_bytes = None
          if previewer:
              if x0.is_nested:
-                 x0 = x0.tensors[0]
-             preview_bytes = previewer.decode_latent_to_preview_image(preview_format, x0)
-         pbar.update_absolute(step + 1, total_steps, preview_bytes)
-     return callback
- 

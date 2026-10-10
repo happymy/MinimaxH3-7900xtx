@@ -46,26 +46,27 @@
   1. ComfyUI\\latent_preview.py          —— 帧预览主战场：模块级状态（_frame_preview_
      enabled / vae / dir / count）、_save_frame_preview() 解码中途 x0 落盘、采样 callback
      挂载（step % every == 0，即 step 0 首批 + 每 total_steps//4 步一批）、set_frame_preview_enabled/
-     vae() 开关与注册。
+     vae() 开关与注册、load_frame_preview_flag() 读全局开关 flag（%TEMP%\\iw-preview-flag.txt）。
   2. ComfyUI\\comfy_extras\\nodes_minimax_h3.py —— H3 节点注册视频 VAE：
      MiniMaxH3ImageToVideo.execute（约 142 行）与 MiniMaxH3ReferenceToVideo.execute
      （约 294 行）各加一行 latent_preview.set_frame_preview_vae(vae)。全量覆盖
      plan/molbal_workflows/final 的 15 个视频工作流（i2v / t2v 共用 ImageToVideo、
      ref2v 用 ReferenceToVideo），未改任何工作流文件；MiniMaxH3AddGuide 等只是
      锚点/增强节点，非任务入口，不需要注册。
-  3. ComfyUI\\execution.py              —— 每任务开关：set_frame_preview_enabled(
-     extra_data.get("preview_file", True))，任务开始前 set_frame_preview_vae(None) 重置。
+  3. ComfyUI\\execution.py              —— 每任务开关：先读全局 flag（%TEMP%\\iw-preview-
+     flag.txt，--preview on/off 写入；1/0 强覆盖所有任务），无 flag 时维持
+     extra_data.get("preview_file", True)；任务开始前 set_frame_preview_vae(None) 重置。
   注意：本地 ComfyUI 目录本身是 git 仓库，`git status` 权威确认本地仅以上 3 个
   文件被改动（即帧预览功能全集）。与官方 0.38.0 全量对比另有 11 个文件不同，经
   git log 逐一归因，全是 9-30 `git pull` 拉到的官方上游提交（tag 之后的 master
   提交，如 crf 默认值提升、资产恢复、DynamicGroup 等），非本地改动，无需手工迁移。
   节点/回调代码在启动时加载，修改后必须重启 ComfyUI 才生效。
 
-【内核改动 diff】以下补丁在本目录，均已在官方 0.38.0 源码树 `git apply --check` 验证通过:
-  - frame_preview_kernel.patch（约 8KB, 3 文件）: 本地改动权威版，由 git diff 直接
-    生成，只含帧预览功能的 3 个文件（latent_preview / execution / nodes_minimax_h3）。
-    只迁帧预览功能用这个: 在官方 0.38.0 源码树根目录 `git apply` 即可。
-  - official-0.38.0-to-current.patch（约 63KB, 14 文件）: 官方 0.38.0 tag zip ->
+【内核改动 diff】以下补丁在本目录，迁移/校验均在官方源码树 `git apply --check` 验证通过:
+  - frame_preview_kernel.patch（约 7KB, 3 文件）: 本地改动权威版（2026-10-10 随全局开关
+    重算），由 git diff 直接生成，只含帧预览功能的 3 个文件（latent_preview / execution /
+    nodes_minimax_h3）。只迁帧预览功能用这个: 在官方 v0.39.2 源码树根目录 `git apply` 即可。
+  - official-0.38.0-to-current.patch（约 95KB, 15 文件）: 官方 0.38.0 tag zip ->
     当前内核的完整复刻 = 帧预览 3 文件 + 11 个 9-30 git pull 拉到的官方上游提交
     （a65316bd 视频编码 crf 默认 18/24、e6beab52+ebd432a7 资产硬盘恢复、986c4d15
     minimax VAE num_layers=36、2d2fa46e DynamicGroup 输入、fb2315f1 qwen 2.1
@@ -86,6 +87,10 @@
     带归档:       python watch_h3_preview.py --collect D:/previews
     再弹一次窗:   python watch_h3_preview.py --open
     轮询加速:     python watch_h3_preview.py --interval 2
+    全局帧预览开关: python watch_h3_preview.py --preview on     # 全局开启（含 step 0 卸载 DiT），写完即退出
+                  python watch_h3_preview.py --preview off    # 全局关闭（也不卸载 DiT），写完即退出
+                  # flag 文件: %TEMP%\\iw-preview-flag.txt（1=开 / 0=关），下次任务起效；
+                  # 不传则维持任务默认（extra_data.preview_file），启动横幅会显示当前全局状态
     退出:         Ctrl+C 随时退出，不影响 ComfyUI 上正在跑的任务
 """
 import json, urllib.request, urllib.error, os, sys, time, argparse, glob, shutil, tempfile
@@ -126,6 +131,24 @@ def now():
     return time.strftime('%H:%M:%S')
 
 
+FLAG_FILE = os.path.join(tempfile.gettempdir(), 'iw-preview-flag.txt')
+
+
+def read_preview_flag():
+    """读全局帧预览开关 flag（%TEMP%\\iw-preview-flag.txt，--preview on/off 写入）。
+    不存在/内容非法 -> None（维持 per-request 默认）；1/0 -> True/False（全局强覆盖）。"""
+    try:
+        with open(FLAG_FILE, 'r', encoding='utf-8') as f:
+            v = f.read().strip().lower()
+        if v in ('1', 'on', 'true', 'yes'):
+            return True
+        if v in ('0', 'off', 'false', 'no'):
+            return False
+    except OSError:
+        pass
+    return None
+
+
 class Task:
     """一个被监视的视频生成任务。"""
 
@@ -148,12 +171,30 @@ def main():
                     help='把每个任务的预览帧复制到该目录（按 prompt_id 子目录留底）')
     ap.add_argument('--open', action='store_true',
                     help='首个预览目录出现时用资源管理器再打开一次（内核默认已自动弹过一次）')
+    ap.add_argument('--preview', choices=['on', 'off'], default=None,
+                    help='全局帧预览开关（写 %%TEMP%%\\iw-preview-flag.txt，下次任务起效）：'
+                         'on=开启（含 step 0 提前卸载 DiT 副作用），off=关闭（也不卸载 DiT）；'
+                         '该模式写完即退出，不进入监视')
     a = ap.parse_args()
+
+    # ---- --preview on/off：只改写全局 flag，不进入监视 ----
+    if a.preview is not None:
+        with open(FLAG_FILE, 'w', encoding='utf-8') as f:
+            f.write('1' if a.preview == 'on' else '0')
+        print('[%s] 全局帧预览已%s（%s），下次任务起效'
+              % (now(), '开启' if a.preview == 'on' else '关闭', FLAG_FILE))
+        return
 
     known_dirs = set(preview_dirs())  # 启动前已存在的目录视为历史，不监视
     tasks = []                        # 按开始顺序排列的 Task 列表
 
-    print('[%s] 帧预览监视器启动，ComfyUI: %s（Ctrl+C 退出）' % (now(), API))
+    flag_state = read_preview_flag()
+    if flag_state is None:
+        flag_hint = '全局开关: 未设置（维持任务默认，--preview on/off 可全局强覆盖）'
+    else:
+        flag_hint = '全局开关: %s（--preview on/off 可改）' % ('开启' if flag_state else '关闭')
+
+    print('[%s] 帧预览监视器启动，ComfyUI: %s（Ctrl+C 退出）；%s' % (now(), API, flag_hint))
     if a.collect:
         os.makedirs(a.collect, exist_ok=True)
         print('[%s] 预览帧将归档到: %s' % (now(), a.collect))
@@ -176,6 +217,10 @@ def main():
                 continue
             extra = running[pid][3] if len(running[pid]) > 3 else {}
             enabled = extra.get('preview_file', True)
+            # 全局 flag 强覆盖：内核读同一份 flag，此处同步，避免任务不产帧时误绑目录
+            eff = read_preview_flag()
+            if eff is not None:
+                enabled = eff
             t = Task(pid, enabled)
             tasks.append(t)
             state = '正在运行' if pid in running else '排队中'
@@ -187,7 +232,8 @@ def main():
         for pid in pending_ids:
             if any(t.prompt_id == pid for t in tasks):
                 continue
-            t = Task(pid, True)
+            eff = read_preview_flag()
+            t = Task(pid, eff if eff is not None else True)
             tasks.append(t)
             print('[%s] ▶ 任务排队 %s' % (now(), pid[:8]))
 

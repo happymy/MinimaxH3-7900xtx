@@ -27,7 +27,7 @@ MiniMax H3 本机部署与实测的**全部资产地图**。**439 个文件 / 37
 > |---|---|---|
 > | `bat\分段归档\*.mp4` / `*.png`、`bat\<族>\h3_*.mp4` | 生成产物（10.37 MB：mp4 20 个 / 7.46 MB + 分段归档 `*_frame.png` 24 张 / 2.91 MB），应由 `ComfyUI\output\` 承接 | 实机同名路径 |
 > | `bat\<族>\img\`、`bat\测试素材\` | 本机测试素材（14 个 / 13.2 MB：各 `<族>\img` 12 个 / 11.32 MB + 测试素材 2 个 / 1.89 MB） | 实机同名路径 |
-> | ~~`bat\preview_watch - 副本\`~~ | **2026-10-10 实测已清理，不再存在**；原为旧版脚本快照（`watch_h3_preview.py` 10,440 B，比现行 14,371 B 少约 4 KB + `.pyc`） | — |
+> | ~~`bat\preview_watch - 副本\`~~ | **2026-10-10 实测已清理，不再存在**；原为旧版脚本快照（`watch_h3_preview.py` 10,440 B，比现行 16,899 B 少约 6.5 KB + `.pyc`） | — |
 > | `ck_ab_20261002\` 的可视化 PNG / mp4 | 对照图与自检样本（PNG 11 + mp4 2 = 13 个 / 7.49 MB，含 `_frames_a|b\` 比对帧各 1 张）；**指标 json 与脚本已入库** | 实机同名路径 |
 > | `LynnReal light VAE 待长测（0.39.2 已定案）\` | **light VAE 换装副本（104 文件 / 2.34 MB）**：v0.39.2 适配脚本 + 工作流的 light VAE 版（54 处 `VIDEO_VAE` 换 `minimax_h3_lynnreal_light_vae_int8_convrot.safetensors`，音频 VAE 仍 fp32），供长期验证；**正式目录保持 fp16 未动**，验证定论后再决定是否入库 | 实机同名路径 |
 > | `bat\_run_4b.log`、`*.err.log`（全目录） | 运行 stderr / 驱动日志，可重生成 | 实机同名路径 |
@@ -288,18 +288,18 @@ OPENER.open(req, timeout=15)
 
 | 文件 | 大小 | 作用 |
 |---|---:|---|
-| `watch_h3_preview.py` | 14,371 B | 主脚本：轮询 `GET /queue` 判任务起止，再轮询 `%TEMP%\iw-preview-*` 打印内核落盘的真实预览帧（成片分辨率，非 34×60 小图）。**零侵入**，不干预生成、不重复解码、不改工作流 |
+| `watch_h3_preview.py` | 16,899 B | 主脚本：轮询 `GET /queue` 判任务起止，再轮询 `%TEMP%\iw-preview-*` 打印内核落盘的真实预览帧（成片分辨率，非 34×60 小图）。**零侵入**，不干预生成、不重复解码、不改工作流。**v2026-10-10 起支持全局帧预览开关：`watch_h3_preview.bat --preview on/off`**（见下方「全局帧预览开关」） |
 | `watch_h3_preview.bat` | 80 B | Windows 入口（`chcp 65001` → `python watch_h3_preview.py %*`） |
-| `frame_preview_kernel.patch` | 8,298 B | **帧预览功能的本地改动权威版**，3 个文件 |
-| `official-0.38.0-to-current.patch` | 96,412 B | 官方 `0.38.0` tag → 当前内核（v0.39.2）的完整复刻 = 帧预览 3 文件 + 12 个官方上游文件（15 文件）。**2026-10-08 随内核升级 v0.39.2 重算**（此前 14 文件版对应 0.38.0） |
+| `frame_preview_kernel.patch` | 6,897 B | **帧预览功能的本地改动权威版**，3 个文件（2026-10-10 随全局开关重算，官方 v0.39.2 HEAD 上 apply 后与实机工作树逐字节一致） |
+| `official-0.38.0-to-current.patch` | 95,455 B | 官方 `0.38.0` tag → 当前内核（v0.39.2）的完整复刻 = 帧预览 3 文件 + 12 个官方上游文件（15 文件）。**2026-10-08 随内核升级 v0.39.2 重算**（此前 14 文件版对应 0.38.0）；**2026-10-10 随全局开关再重算**，v0.38.0 干净树上 apply 后 3 个本地文件 blob 与实机逐一相同 |
 
 > 不入库：~~`bat\preview_watch - 副本\`~~（**2026-10-10 已清理，实机不存在**；原旧版快照 10,440 B + `.pyc`，见 §1 未入库表）、`bat\测试素材\`。
 
 **⚠️ 用它必须先给 ComfyUI 内核打补丁** —— 预览帧由内核负责生成并落盘，本脚本只是在旁边盯着。内核侧改动清单（相对 `ComfyUI_windows_portable\`，均为 UTF-8）：
 
-1. `ComfyUI\latent_preview.py` —— 帧预览主战场：模块级状态、`_save_frame_preview()` 解码中途写盘
+1. `ComfyUI\latent_preview.py` —— 帧预览主战场：模块级状态、`_save_frame_preview()` 解码中途写盘、**`load_frame_preview_flag()` 读全局开关 flag**
 2. `ComfyUI\comfy_extras\nodes_minimax_h3.py` —— H3 节点接上 `latent_preview` 回调
-3. `ComfyUI\execution.py` —— 任务起止与 `extra_data.preview_file` 传递
+3. `ComfyUI\execution.py` —— 任务起止与 `extra_data.preview_file` 传递；**每任务先查全局 flag（存在则强覆盖，无 flag 维持 per-request 默认）**
 
 实机权威确认（2026-10-07 `git status`，本机 ComfyUI 是 git 仓库）：**本地改动恰好只有这 3 个文件**，与 `frame_preview_kernel.patch` 的 `diff --git` 清单逐一对齐。**2026-10-08 内核升级到 v0.39.2（`3c1b7a17`）后再验一次：本地改动仍恰好这 3 个文件**（官方上游对 H3 核心节点零改动，见 `Plan.md §1` 环境表）。
 
@@ -325,6 +325,24 @@ if step % every == 0:
 - **真正的风险是整机卡死，不是报错**：`--enable-dynamic-vram` 下「显存爆了」不等于出错，只有内存也被耗尽时操作系统才卡死 → 提前卸载是**防卡死**，不是防报错
 
 本脚本对此**零贡献也零破坏**：卸载由内核 `VAE decode` 触发，`watch_h3_preview.py` 不发任何卸载请求，零侵入性质不变。同一份说明已写进脚本 docstring 的「【step 0 首批预览的附加效果：提前卸载 DiT】」小节。
+
+#### 全局帧预览开关（2026-10-10 方案 3 落地）
+
+**问题**：预览产帧与 step 0 卸载 DiT 是同一把锁，想关预览省显存时就无法单独保留卸载效果；且开关只在任务请求的 `extra_data.preview_file` 上，手动 `POST /prompt` 不传则永远默认开。
+
+**解决**：内核补丁新增全局 flag `%TEMP%\iw-preview-flag.txt`（内容 `1`=开 / `0`=关），**存在则强覆盖所有任务**（连 `preview_file=false` 的请求也强制打开；连默认 true 也强制关闭），不存在则维持 per-request 默认。用 `watch_h3_preview.bat --preview on/off` 写 flag，写完立即退出；无参数启动监视时横幅显示当前全局状态：
+
+```bat
+watch_h3_preview.bat --preview on     :: 全局开启帧预览（含 step 0 卸载 DiT），下次任务起效
+watch_h3_preview.bat --preview off    :: 全局关闭（也不卸载 DiT），下次任务起效
+watch_h3_preview.bat                  :: 正常监视，横幅显示当前全局开关状态
+```
+
+**强覆盖语义**（2026-10-10 定案）：
+- flag 存在 → 每个任务都被强制到 flag 值（`execution.py` 读 `load_frame_preview_flag()`，非 None 即覆盖 `extra_data.preview_file`）
+- **关预览 = 同时失去 step 0 卸载 DiT 效果**（同一把锁，`--preview off` 后不再提前卸载）
+- flag 由用户显式写、显式删除（`--preview on` 覆盖为开；无官方删除参数，删文件或写反向值即可恢复）
+- **写 flag 不需要重启 ComfyUI**（下次任务起读）；但补丁本身是内核改动，**首次部署或补丁升级必须重启 ComfyUI**
 
 **换机部署顺序**：装好官方 `v0.39.2` → `git apply` 补丁（`official-0.38.0-to-current.patch` 即 0.38.0→v0.39.2 的完整复刻基线，`frame_preview_kernel.patch` 为帧预览 3 文件的本地改动权威版）→ **重启 ComfyUI 生效** → 再跑 `watch_h3_preview.bat`。内核没打补丁时脚本仍能跑，只是永远等不到 `iw-preview-*` 目录。
 
