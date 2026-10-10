@@ -1,6 +1,6 @@
 # plan 目录索引
 
-MiniMax H3 本机部署与实测的**全部资产地图**。**446 个文件 / 37.15 MB**（2026-10-08 重数；口径 = `Get-ChildItem -Recurse -File` 全量递归，含 `LynnReal light VAE 待长测（0.39.2 已定案）` 104 文件 / 2.34 MB）。
+MiniMax H3 本机部署与实测的**全部资产地图**。**439 个文件 / 37.08 MB**（2026-10-10 重数；口径 = `Get-ChildItem -Recurse -File` 全量递归，含 `LynnReal light VAE 待长测（0.39.2 已定案）` 104 文件 / 2.34 MB）。
 本文件是导航层；整理动作只做了归档、删字节码、修注释、补交付层、建显存估算模型，详见 §6。
 
 > **姊妹目录**：Qwen-Image 2.1（生图）那条线的全部资产在 **`plan2\`**，不在本目录。见 `plan2\README.md`。
@@ -26,9 +26,9 @@ MiniMax H3 本机部署与实测的**全部资产地图**。**446 个文件 / 37
 > | 未入库 | 原因 | 在哪 |
 > |---|---|---|
 > | `bat\分段归档\*.mp4` / `*.png`、`bat\<族>\h3_*.mp4` | 生成产物（10.37 MB：mp4 20 个 / 7.46 MB + 分段归档 `*_frame.png` 24 张 / 2.91 MB），应由 `ComfyUI\output\` 承接 | 实机同名路径 |
-> | `bat\<族>\img\`、`bat\测试素材\` | 本机测试素材（14 个 / 13.2 MB：各 `<族>\img` 12 个 / 11.31 MB + 测试素材 2 个 / 1.89 MB） | 实机同名路径 |
-> | `bat\preview_watch - 副本\` | **旧版脚本快照**（`watch_h3_preview.py` 10,440 B，比现行 12,732 B 少 2 KB + 一份 `.pyc`），历史备份不入库 | 实机同名路径 |
-> | `ck_ab_20261002\` 的可视化 PNG / mp4 | 对照图与自检样本（PNG 9 + mp4 2 = 11 个 / 6.42 MB）；**指标 json 与脚本已入库** | 实机同名路径 |
+> | `bat\<族>\img\`、`bat\测试素材\` | 本机测试素材（14 个 / 13.2 MB：各 `<族>\img` 12 个 / 11.32 MB + 测试素材 2 个 / 1.89 MB） | 实机同名路径 |
+> | ~~`bat\preview_watch - 副本\`~~ | **2026-10-10 实测已清理，不再存在**；原为旧版脚本快照（`watch_h3_preview.py` 10,440 B，比现行 14,371 B 少约 4 KB + `.pyc`） | — |
+> | `ck_ab_20261002\` 的可视化 PNG / mp4 | 对照图与自检样本（PNG 11 + mp4 2 = 13 个 / 7.49 MB，含 `_frames_a|b\` 比对帧各 1 张）；**指标 json 与脚本已入库** | 实机同名路径 |
 > | `LynnReal light VAE 待长测（0.39.2 已定案）\` | **light VAE 换装副本（104 文件 / 2.34 MB）**：v0.39.2 适配脚本 + 工作流的 light VAE 版（54 处 `VIDEO_VAE` 换 `minimax_h3_lynnreal_light_vae_int8_convrot.safetensors`，音频 VAE 仍 fp32），供长期验证；**正式目录保持 fp16 未动**，验证定论后再决定是否入库 | 实机同名路径 |
 > | `bat\_run_4b.log`、`*.err.log`（全目录） | 运行 stderr / 驱动日志，可重生成 | 实机同名路径 |
 > | `__pycache__\`、全部 `*.pyc` | 字节码，已被 `.gitignore` 排除 | — |
@@ -54,10 +54,10 @@ MiniMax H3 本机部署与实测的**全部资产地图**。**446 个文件 / 37
 |---|---|
 | `ComfyUI_MiniMaxH3_AMD_7900XTX_Plan.md` (约 104 KB / 1184 行) | **主计划**。**§3 显存预算模型**（预算双界 / staged 系数 / 装载判据 / 卸载纪律）、§5 目录结构图、§10 性能与显存、§11 分模型实测（11.8 8B 变体 / 11.9 op 系列 / 11.10 分辨率矩阵 / 11.11 破限专章） |
 | `T2V_4B_vs_8B_对比报告.md` (约 30 KB / 433 行) | 4B vs 8B 主报告。§3.1 混淆变量、§9 0.60 MP 补测、§10 破限 A/B |
-| `ComfyUI_MiniMaxH3_From_Scratch.md` (约 12 KB / 212 行) | 从零构建说明（模型清单、目录、启动参数） |
+| `ComfyUI_MiniMaxH3_From_Scratch.md` (约 15 KB / 225 行) | 从零构建说明（模型清单、目录、启动参数）；2026-10-08 随 v0.39.2 升级同步 core/kitchen 版本 |
 | `vision_qc_识图结论.md` (约 10 KB / 152 行) | 识图判定结论（0.40 MP 不糊 / 几何细节提升真实 / 4B-8B 无法排名） |
 | `CK注意力回归问题调查报告.md` (350 行) | ⚠️ `--use-ck-attention` 回归证据链（**Qwen-Image 侧**：5 组 flag 对照 / token 64 边界二分 / 源码定位 / 版本溯源），对应 `Plan.md §12`。§7.3 已于 2026-10-02 由 A/B 关闭（H3 DiT 侧安全）。**`plan2\qwen21-tools\` 下有同名副本**，权威版是本目录这份 |
-| `ck_ab_20261002\` (入库 16 文件 / 171 KB) | ✅ **H3 侧 ck / 非-ck 受控 A/B**（2026-10-02）。结论：**H3 DiT 走 ck 安全**，端到端 1.54x。入库内容 = 本目录 `README.md` + 主报告 + 2 个脚本 + 10 份 json（2 份运行清单组共 5 份 + 5 份指标）。**实机另有 32 文件 / 6.61 MB**，多出的是可视化 PNG / mp4 / 启动日志，不入库。对应 `Plan.md §12.3` / `§12.6` 待办 1（已关闭） |
+| `ck_ab_20261002\` (入库 16 文件 / 175 KB) | ✅ **H3 侧 ck / 非-ck 受控 A/B**（2026-10-02）。结论：**H3 DiT 走 ck 安全**，端到端 1.54x。入库内容 = 本目录 `README.md` + 主报告 + 2 个脚本 + 11 份 json（运行清单 5 份 + `*_metrics.json` 指标 5 份 + `arm_flags.json`）。**实机另有 36 文件 / 7.71 MB**（2026-10-10 重数，含 `_frames_a|b\` 比对帧与 `__pycache__`），多出的是可视化 PNG / mp4 / 启动日志，不入库。对应 `Plan.md §12.3` / `§12.6` 待办 1（已关闭） |
 | `API_workflows\H3工作流适配计划.md` (约 9 KB / 157 行) | API 格式工作流适配方案 |
 | `API_workflows\未测试\final\README.md` | **API 格式交付层**（15 份）的来源与三套 TE 对照。见 §2.2 |
 | `bat\提示词模板\MiniMax-H3-提示词书写规则.md` (约 19 KB / 330 行) | **提示词书写规则**（三字段信封 / `[Shot N]` 时间线 / 摄影机运动词表 / 帧栅格 / R2V 六段） |
@@ -288,12 +288,12 @@ OPENER.open(req, timeout=15)
 
 | 文件 | 大小 | 作用 |
 |---|---:|---|
-| `watch_h3_preview.py` | 12,732 B | 主脚本：轮询 `GET /queue` 判任务起止，再轮询 `%TEMP%\iw-preview-*` 打印内核落盘的真实预览帧（成片分辨率，非 34×60 小图）。**零侵入**，不干预生成、不重复解码、不改工作流 |
+| `watch_h3_preview.py` | 14,371 B | 主脚本：轮询 `GET /queue` 判任务起止，再轮询 `%TEMP%\iw-preview-*` 打印内核落盘的真实预览帧（成片分辨率，非 34×60 小图）。**零侵入**，不干预生成、不重复解码、不改工作流 |
 | `watch_h3_preview.bat` | 80 B | Windows 入口（`chcp 65001` → `python watch_h3_preview.py %*`） |
 | `frame_preview_kernel.patch` | 8,298 B | **帧预览功能的本地改动权威版**，3 个文件 |
 | `official-0.38.0-to-current.patch` | 96,412 B | 官方 `0.38.0` tag → 当前内核（v0.39.2）的完整复刻 = 帧预览 3 文件 + 12 个官方上游文件（15 文件）。**2026-10-08 随内核升级 v0.39.2 重算**（此前 14 文件版对应 0.38.0） |
 
-> 不入库：`bat\preview_watch - 副本\`（旧版快照 10,440 B + `.pyc`，见 §1 未入库表）、`bat\测试素材\`。
+> 不入库：~~`bat\preview_watch - 副本\`~~（**2026-10-10 已清理，实机不存在**；原旧版快照 10,440 B + `.pyc`，见 §1 未入库表）、`bat\测试素材\`。
 
 **⚠️ 用它必须先给 ComfyUI 内核打补丁** —— 预览帧由内核负责生成并落盘，本脚本只是在旁边盯着。内核侧改动清单（相对 `ComfyUI_windows_portable\`，均为 UTF-8）：
 
@@ -336,7 +336,7 @@ if step % every == 0:
 
 > 全部**未动**，仅登记。需要动时先确认，因为工作流与脚本的字节和时间戳是回滚锚点。
 
-### 7.1 体积大头：生成产物落在 plan 内（现状 23 个 mp4 = 8.59 MB，占全目录 23.1%）
+### 7.1 体积大头：生成产物落在 plan 内（现状 23 个 mp4 = 8.59 MB，占全目录 23.2%）
 
 > ⚠️ 本节原表所列 `h3_multisegment_2_3456x1920.mp4`（21.0 MB）等 4 个大文件**已在 §6.1 归档时移出 plan，现已不存在**，整表于 2026-10-02 按实测重记（2026-10-08 计入 `LynnReal light VAE 待长测（0.39.2 已定案）` 目录 1 个实测样本）。
 
@@ -346,17 +346,17 @@ if step % every == 0:
 | `bat\{multisegment,ref2va,scenes,scenes_ref}\` | 8 个 / 3.66 MB | 各脚本目录里的单段成品（multisegment 5、ref2va/scenes/scenes_ref 各 1） |
 | `ck_ab_20261002\` | 2 个 / 0.46 MB | `selftest_same.mp4` / `selftest_perturbed.mp4`（比对工具的自检样本） |
 | `LynnReal light VAE 待长测（0.39.2 已定案）\bat\multisegment\` | 1 个 / 0.67 MB | **light VAE 20s 实测样本**（2026-10-08，随待长测目录保留） |
-| **合计** | **23 个 / 8.59 MB** | 占 plan 全目录 **23.1%**（plan 总计 446 文件 / 37.15 MB） |
+| **合计** | **23 个 / 8.59 MB** | 占 plan 全目录 **23.2%**（plan 总计 439 文件 / 37.08 MB） |
 
 `plan\` 根目录**已无散落 mp4**（§6.1 归档后状态），产物只存在于上述四个位置。
 
-> 另有非 mp4 的生成产物同样不入库：`bat\分段归档\*\{first,last}_frame.png`（24 张 / 2.91 MB）、`bat\<族>\img\` 与 `bat\测试素材\`（14 个 / 13.2 MB）、`ck_ab_20261002\` 的对照图 PNG（9 个 / 5.96 MB；mp4 已在表内）、`plan2` 的两张对照图（2.94 MB）。
+> 另有非 mp4 的生成产物同样不入库：`bat\分段归档\*\{first,last}_frame.png`（24 张 / 2.91 MB）、`bat\<族>\img\` 与 `bat\测试素材\`（14 个 / 13.2 MB）、`ck_ab_20261002\` 的对照图 PNG（11 个 / 7.03 MB，含 `_frames_a|b\` 比对帧；mp4 已在表内）、`plan2` 的两张对照图（2.94 MB）。
 
 ### 7.2 结构不一致
 
 | 项 | 问题 |
 |---|---|
-| `bak\`（plan 根） | `gen_h3_multisegment.py` 与 `bat\multisegment\gen_h3_multisegment.py` 同名不同版（13.4 KB vs 15.6 KB），易误用；`gen_video_ask.*` 已无对应目录（现已退场归入本目录，勿取用，见 §8 硬规矩） |
+| `bak\`（plan 根） | `gen_h3_multisegment.py` 与 `bat\multisegment\gen_h3_multisegment.py` 同名不同版（13.4 KB vs 15.8 KB），易误用；`gen_video_ask.*` 已无对应目录（现已退场归入本目录，勿取用，见 §8 硬规矩） |
 | `API_workflows\{Calliope,go,omy}\bak *` | 命名不统一：`bak 04  OK`（双空格）/ `bak 05 OK` / `bak 04`；`bak 04` 与 `bak 05 OK` 文件重叠。另 `omy\` 只有 `bak 01`，与另两族步数不齐 |
 | `molbal_workflows\final\4b\op\` | 比同级的 `final\op-8b\` 深一层。⚠️ `API_workflows\未测试\final\` **刻意沿用了同样的深一层**，以保证两种格式层级可对照 |
 | `final\提示词模板在bat里.txt` | 0 字节占位指针（仍存在） |
