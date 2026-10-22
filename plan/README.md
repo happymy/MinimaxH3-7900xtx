@@ -1,6 +1,6 @@
 # plan 目录索引
 
-MiniMax H3 本机部署与实测的**全部资产地图**。**439 个文件 / 37.08 MB**（2026-10-10 重数；口径 = `Get-ChildItem -Recurse -File` 全量递归，含 `LynnReal light VAE 待长测（0.39.2 已定案）` 104 文件 / 2.34 MB）。
+MiniMax H3 本机部署与实测的**全部资产地图**。**447 个文件 / 42.61 MB**（2026-10-22 重数；口径 = `Get-ChildItem -Recurse -File` 全量递归，含 `LynnReal light VAE 待长测（0.39.2 已定案）` 104 文件 / 2.34 MB）。
 本文件是导航层；整理动作只做了归档、删字节码、修注释、补交付层、建显存估算模型，详见 §6。
 
 > **姊妹目录**：Qwen-Image 2.1（生图）那条线的全部资产在 **`plan2\`**，不在本目录。见 `plan2\README.md`。
@@ -56,8 +56,11 @@ MiniMax H3 本机部署与实测的**全部资产地图**。**439 个文件 / 37
 | `T2V_4B_vs_8B_对比报告.md` (约 30 KB / 433 行) | 4B vs 8B 主报告。§3.1 混淆变量、§9 0.60 MP 补测、§10 破限 A/B |
 | `ComfyUI_MiniMaxH3_From_Scratch.md` (约 15 KB / 225 行) | 从零构建说明（模型清单、目录、启动参数）；2026-10-08 随 v0.39.2 升级同步 core/kitchen 版本 |
 | `vision_qc_识图结论.md` (约 10 KB / 152 行) | 识图判定结论（0.40 MP 不糊 / 几何细节提升真实 / 4B-8B 无法排名） |
-| `CK注意力回归问题调查报告.md` (350 行) | ⚠️ `--use-ck-attention` 回归证据链（**Qwen-Image 侧**：5 组 flag 对照 / token 64 边界二分 / 源码定位 / 版本溯源），对应 `Plan.md §12`。§7.3 已于 2026-10-02 由 A/B 关闭（H3 DiT 侧安全）。**`plan2\qwen21-tools\` 下有同名副本**，权威版是本目录这份 |
+| `CK注意力回归问题调查报告.md` (361 行) | ⚠️ `--use-ck-attention` 回归证据链（**Qwen-Image 侧**：5 组 flag 对照 / token 64 边界二分 / 源码定位 / 版本溯源），对应 `Plan.md §12`。§7.3 已于 2026-10-02 由 A/B 关闭（H3 DiT 侧安全）。**✅ 2026-10-22 定案：回归已由 comfy-kitchen 0.2.37 修复**（首个 commit `19ea55b` 修 gfx11 `-inf` mask NaN），Qwen 侧 A/B 实测 MAE 1.09/2.36、PSNR 43.5/31.4 dB，生图可开 CK（见 `ck_ab_qwen_20261022\`）。**`plan2\qwen21-tools\` 下有同名副本**，权威版是本目录这份 |
 | `ck_ab_20261002\` (入库 16 文件 / 175 KB) | ✅ **H3 侧 ck / 非-ck 受控 A/B**（2026-10-02）。结论：**H3 DiT 走 ck 安全**，端到端 1.54x。入库内容 = 本目录 `README.md` + 主报告 + 2 个脚本 + 11 份 json（运行清单 5 份 + `*_metrics.json` 指标 5 份 + `arm_flags.json`）。**实机另有 36 文件 / 7.71 MB**（2026-10-10 重数，含 `_frames_a|b\` 比对帧与 `__pycache__`），多出的是可视化 PNG / mp4 / 启动日志，不入库。对应 `Plan.md §12.3` / `§12.6` 待办 1（已关闭） |
+| `ck_ab_qwen_20261022\` (入库 1 脚本 / 6,567 B) | ✅ **Qwen-Image 侧 ck / 非-ck 受控 A/B**（2026-10-22）。结论：0.2.37 修复后**生图可开 CK**（短/长提示词 MAE 1.09/2.36、PSNR 43.5/31.4 dB，CK 稳态快约 14%）。入库内容 = `qwen_ck_ab.py`。**实机另有 4 张对照 PNG / 5.41 MB**（`ckab_{ck,nock}_{short,long}_00001_.png`），不入库。推翻 2026-10-03「CK 不能生图」结论 |
+| `Toonflow接入本地ComfyUI计划.md` (约 21 KB / 304 行) | Toonflow 接入方案（6 个 API 工作流 + 模式切换 + LLM/ComfyUI 互斥）。**2026-10-22 对齐**：生图已改走 CK 脚本，`no_ck` 降为回退/对照，模式判定逻辑随之失效（见文档开头注记） |
+| `API_workflows\comfyui.ts` (82,236 B) | Toonflow 的 ComfyUI provider 实现归档（对应 Toonflow 仓库提交 `3620694`，`packages/providers/src/media/comfyui.ts`）。代码资产，入库 |
 | `API_workflows\H3工作流适配计划.md` (约 9 KB / 157 行) | API 格式工作流适配方案 |
 | `API_workflows\未测试\final\README.md` | **API 格式交付层**（15 份）的来源与三套 TE 对照。见 §2.2 |
 | `bat\提示词模板\MiniMax-H3-提示词书写规则.md` (约 19 KB / 330 行) | **提示词书写规则**（三字段信封 / `[Shot N]` 时间线 / 摄影机运动词表 / 帧栅格 / R2V 六段） |
@@ -364,11 +367,11 @@ watch_h3_preview.bat                  :: 正常监视，横幅显示当前全局
 | `bat\{multisegment,ref2va,scenes,scenes_ref}\` | 8 个 / 3.66 MB | 各脚本目录里的单段成品（multisegment 5、ref2va/scenes/scenes_ref 各 1） |
 | `ck_ab_20261002\` | 2 个 / 0.46 MB | `selftest_same.mp4` / `selftest_perturbed.mp4`（比对工具的自检样本） |
 | `LynnReal light VAE 待长测（0.39.2 已定案）\bat\multisegment\` | 1 个 / 0.67 MB | **light VAE 20s 实测样本**（2026-10-08，随待长测目录保留） |
-| **合计** | **23 个 / 8.59 MB** | 占 plan 全目录 **23.2%**（plan 总计 439 文件 / 37.08 MB） |
+| **合计** | **23 个 / 8.59 MB** | 占 plan 全目录 **20.2%**（plan 总计 447 文件 / 42.61 MB） |
 
 `plan\` 根目录**已无散落 mp4**（§6.1 归档后状态），产物只存在于上述四个位置。
 
-> 另有非 mp4 的生成产物同样不入库：`bat\分段归档\*\{first,last}_frame.png`（24 张 / 2.91 MB）、`bat\<族>\img\` 与 `bat\测试素材\`（14 个 / 13.2 MB）、`ck_ab_20261002\` 的对照图 PNG（11 个 / 7.03 MB，含 `_frames_a|b\` 比对帧；mp4 已在表内）、`plan2` 的两张对照图（2.94 MB）。
+> 另有非 mp4 的生成产物同样不入库：`bat\分段归档\*\{first,last}_frame.png`（24 张 / 2.91 MB）、`bat\<族>\img\` 与 `bat\测试素材\`（14 个 / 13.2 MB）、`ck_ab_20261002\` 的对照图 PNG（11 个 / 7.03 MB，含 `_frames_a|b\` 比对帧；mp4 已在表内）、`ck_ab_qwen_20261022\` 的 4 张对照 PNG（5.41 MB）、`plan2` 的两张对照图（2.94 MB）。
 
 ### 7.2 结构不一致
 

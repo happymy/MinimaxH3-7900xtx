@@ -155,7 +155,7 @@ set TARGET=ComfyUI\main.py
 pause
 ```
 
-`run_amd_gpu_no_ck_attention.bat`（**Qwen-Image 2.1 用**——去掉 `--use-ck-attention`，其余逐字一致以保证 A/B 可比）：
+`run_amd_gpu_no_ck_attention.bat`（**回退/对照用**——去掉 `--use-ck-attention`，其余逐字一致以保证 A/B 可比；2026-10-22 前曾作 Qwen-Image 2.1 专用，CK 修复后生图改走主力脚本）：
 
 ```bat
 %PYTHON% -s %TARGET% --windows-standalone-build --enable-dynamic-vram --disable-pinned-memory --disable-smart-memory --reserve-vram 6 --disable-api-nodes --cache-none --fp16-intermediates
@@ -171,9 +171,9 @@ pause
 - `--reserve-vram 6`：预留 6GB 显存给 OS/桌面软件，避免生成期切桌面卡顿/驱动超时
 - `--disable-api-nodes`：不加载 API 节点 + 前端不联网；`/prompt` 提交不受影响。⚠️ v0.39.2 起该开关已废弃（上游 #16672），等价改为 `--offline` 或 `--disable-partner-nodes`；本机 3 个启动脚本当前版本仍兼容运行，文档如实保留原值
 - `--cache-none`：不缓存节点执行结果（每次运行全部节点重算），降 RAM/VRAM 占用，代价是重复执行
-- `--use-ck-attention`：Comfy Kitchen attention（int8 内核，`comfy_kitchen` 0.2.37，HIP 后端实测可用）。实测采样 **2.70x** 加速（总耗时口径 2.02x）、峰值显存反降 0.40 GiB。⚠️ **双重风险**：(1) 缺失或 kernel 不支持时**直接 `exit(-1)` 拒启**（`attention.py:918`）；(2) ⚠️⚠️ **0.2.36/0.2.37 存在正确性回归**——存活 token 跨过 **64**（HIP 核 tile 宽度）时输出崩坏，**Qwen-Image 2.1 已确认**（绿/紫伪影且无异常抛出），**必须改用 `run_amd_gpu_no_ck_attention.bat`**（0.2.37 仅首个 commit 修 #214 NaN，此回归未修复）。H3 文本编码器不受影响（`small_input=True` 提前返回 `attention_basic`），**H3 DiT 主干已于 2026-10-02 实测确认安全**（124 帧 SSIM 0.98849、四路判据全排除崩坏、锐度 +5.50%）。详见 `CK注意力回归问题调查报告.md` + `ck_ab_20261002\` + `Plan.md §12`
+- `--use-ck-attention`：Comfy Kitchen attention（int8 内核，`comfy_kitchen` 0.2.37，HIP 后端实测可用）。实测采样 **2.70x** 加速（总耗时口径 2.02x）、峰值显存反降 0.40 GiB。⚠️ **启动风险**：缺失或 kernel 不支持时**直接 `exit(-1)` 拒启**（`attention.py:918`）。**✅ 2026-10-22：0.2.36/0.2.37 早期的 token>64 崩坏已由 `19ea55b`（#214）修复**——Qwen-Image 2.1 侧 A/B 通过（短/长提示词 MAE 1.09/2.36、PSNR 43.5/31.4 dB，CK 稳态快约 14%），**生图与生视频可共用同一脚本**。证据 `ck_ab_qwen_20261022\` + `ck_ab_20261002\`（H3 侧 124 帧 SSIM 0.98849）+ `CK注意力回归问题调查报告.md` + `Plan.md §12`
 
-就记住：**不要上 `--lowvram/--novram`**（会主动把权重卸到系统内存，徒增 swap 风险）；**不要 `--use-sage-attention`**（AMD 无支持 + H3 全局 sage 出纯噪声）；**Qwen-Image 不要用带 ck 的脚本**。
+就记住：**不要上 `--lowvram/--novram`**（会主动把权重卸到系统内存，徒增 swap 风险）；**不要 `--use-sage-attention`**（AMD 无支持 + H3 全局 sage 出纯噪声）；**生图/生视频统一用带 ck 的主力脚本**（0.2.37 已修复生图回归；`no_ck` 仅在 CK 出脏图时作对照）。
 
 `run_amd_gpu.bat`（**已弃用**，仅保留 `.bak` 作对照）：早期不带 dynamic VRAM 的版本，参数仅 `--disable-pinned-memory --fp16-intermediates`，勿再日常使用。
 

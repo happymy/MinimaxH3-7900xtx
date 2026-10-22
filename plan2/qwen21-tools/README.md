@@ -12,14 +12,15 @@ Qwen-Image 2.1 (GGUF) 在本地 ComfyUI 上的工作流工具集。
 
 环境：ComfyUI 0.38.0，portable + ROCm torch 2.9.1（RX 7900 XTX 24 GB）。
 
-**启动 ComfyUI（2026-10-03 更新）**：本目录是**生图**工具链，必须用
-**`run_amd_gpu_no_ck_attention.bat`**（关 ck）。H3 生视频才用带 ck 的
-`run_amd_gpu_enable_dynamic_vram.bat`。两个脚本都带 `--enable-dynamic-vram`，
-动态显存这条不变，别认错脚本。
+**启动 ComfyUI（2026-10-22 更新）**：本目录是**生图**工具链，与生视频**共用**
+**`run_amd_gpu_enable_dynamic_vram.bat`**（开 ck）。`run_amd_gpu_no_ck_attention.bat`
+现仅作回退/对照。两个脚本都带 `--enable-dynamic-vram`，动态显存这条不变。
 
-> ⚠️ 原文此处写的是「只能用 `run_amd_gpu_enable_dynamic_vram.bat`」，那条只验了动态显存、
-> 没拆开 ck 变量。后续实测：ck 生图会「脏」且**超长提示词会丢失**，故生图一律关 ck。
-> 详见 `plan2\Qwen-Image-2.1-GGUF-部署总结.md` §3 与 `plan\CK注意力回归问题调查报告.md`。
+> 演进：原文写「只能用 `run_amd_gpu_enable_dynamic_vram.bat`」（只验了动态显存、没拆开 ck 变量）→
+> 2026-10-03 实测 ck 生图会「脏」且超长提示词丢失，改为一律关 ck →
+> **✅ 2026-10-22 定案：回归由 comfy-kitchen 0.2.37 `19ea55b`（#214）修复**，生图恢复默认开 ck
+> （A/B：短/长提示词 MAE 1.09/2.36、PSNR 43.5/31.4 dB，证据 `plan\ck_ab_qwen_20261022\`）。
+> 详见 `plan2\Qwen-Image-2.1-GGUF-部署总结.md` §3 与 `plan\CK注意力回归问题调查报告.md` §1 定案。
 
 ---
 

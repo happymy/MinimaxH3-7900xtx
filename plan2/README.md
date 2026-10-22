@@ -44,7 +44,7 @@
 |---|---|
 | `PR_submission_CN.md` / `PR_submission_EN.md` | 提交到 [comfy-kitchen issue #226](https://github.com/Comfy-Org/comfy-kitchen/issues/226) 的补充材料。**关键发现：token 长度边界精确落在 64**（注意力核 tile 宽度），78 token→64 存活正常，82 token→68 存活即损坏。已定位到 `comfy_kitchen/sage_attention.py` 的硬编码阈值 |
 | `report_en.md` | 英文版报告 |
-| `CK注意力回归问题调查报告.md` | **本文件是 `plan\CK注意力回归问题调查报告.md` 的副本**（2026-10-06 同步，权威版在 `plan\`）。同名 `.pre-ab-20261002.bak` 是 A/B 之前的旧版快照，§7.3 当时仍写「H3 DiT 未验证」 |
+| `CK注意力回归问题调查报告.md` | **本文件是 `plan\CK注意力回归问题调查报告.md` 的副本**（2026-10-22 同步，权威版在 `plan\`）。同名 `.pre-ab-20261002.bak` 是 A/B 之前的旧版快照，§7.3 当时仍写「H3 DiT 未验证」 |
 
 ### 2.3 实验留痕
 
@@ -59,20 +59,22 @@
 
 ---
 
-## 3. 启动脚本（⚠️ 与 `plan\` 的 H3 不同，勿混用）
+## 3. 启动脚本（⚠️ 2026-10-22 起两线共用同一脚本）
 
 | 用途 | 启动脚本 | `--use-ck-attention` |
 |------|----------|:---:|
-| **Qwen 生图**（本目录全部工作流） | `run_amd_gpu_no_ck_attention.bat` | ❌ 关 |
+| **Qwen 生图**（本目录全部工作流） | `run_amd_gpu_enable_dynamic_vram.bat` | ✅ 开（0.2.37 已修复回归） |
 | **H3 生视频**（`plan\`） | `run_amd_gpu_enable_dynamic_vram.bat` | ✅ 开 |
 
 两个脚本**都带 `--enable-dynamic-vram`** —— 动态显存是 OOM 的关键，这条不变；
-区别只在 ck 开关，所以别认错脚本。
+区别只在 ck 开关。`run_amd_gpu_no_ck_attention.bat` 现仅作**回退/对照**（CK 出脏图时用）。
 
-**⚠️ 口径变更（2026-10-03 用户实测）**：本目录两份文档原先都写「只能用
-`run_amd_gpu_enable_dynamic_vram.bat`」，那条结论只验了动态显存、没拆开 ck 变量。
-后续实测 ck 对生图是负向的：图片会「脏」、与提示词不符，且**超过一定长度的提示词会丢失**。
-故生图一律关 ck。详见 `Qwen-Image-2.1-GGUF-部署总结.md` §3。
+**✅ 口径变更（2026-10-22）**：0.2.36 的 CK 回归（图片「脏」、长提示词丢失）由 comfy-kitchen
+**0.2.37** 的 `19ea55b`（#214，gfx11 `-inf` mask NaN）修复。Qwen 侧 A/B 复测：短 169 字符
+MAE 1.09 / PSNR 43.5 dB，长 1451 字符（300+ token）MAE 2.36 / PSNR 31.4 dB，四图高频能量
+5.3–5.6（纯噪声 30+），CK 稳态快约 14%。证据 `plan\ck_ab_qwen_20261022\`，
+完整链条 `plan\CK注意力回归问题调查报告.md` §1 定案。**2026-10-03「生图一律关 ck」作废。**
+重测触发条件：kitchen 版本变动 / image-edit / 2K / 更激进 int8 量化 / 换卡。
 
 ---
 
@@ -93,8 +95,8 @@
 |---|---|---|
 | 模型 | MiniMax H3（8B / 4B，GGUF + fp8 TE） | Qwen-Image 2.1（abenzerps GGUF，Q4_K_M / Q8_0） |
 | 产出 | 视频（含音频轨） | 静态图 |
-| ck | ✅ 开（实测安全，见 `plan\ck_ab_20261002\`） | ❌ 关（生图会脏 + 丢长提示词） |
-| 崩坏问题 | 无 | 有，token>64 即损坏，已提交上游 issue #226 |
+| ck | ✅ 开（实测安全，见 `plan\ck_ab_20261002\`） | ✅ 开（0.2.37 已修复，见 `plan\ck_ab_qwen_20261022\`） |
+| 崩坏问题 | 无 | 无（0.2.36 token>64 崩坏已由 0.2.37 `19ea55b` 修复，issue #226 关闭） |
 | 工作流格式 | UI 格式（`molbal_workflows\`）+ API 格式（`API_workflows\`） | UI 格式交付在 `ComfyUI\user\default\workflows\`，API 图留痕在本目录 |
 
 ---

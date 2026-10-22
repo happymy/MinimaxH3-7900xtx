@@ -39,30 +39,30 @@
 | 磁盘 | D: 约 215 GB 可用 |
 | 端口 | 8188 |
 
-**启动方式（强制，2026-10-03 更新）**：Qwen-Image 2.1 属于**生图**，必须用
-`ComfyUI_windows_portable\run_amd_gpu_no_ck_attention.bat`。
+**启动方式（2026-10-22 更新）**：Qwen-Image 2.1 属于**生图**，与生视频**共用**
+`ComfyUI_windows_portable\run_amd_gpu_enable_dynamic_vram.bat`（开 ck）。
 
 | 用途 | 启动脚本 | `--use-ck-attention` |
 |------|----------|:---:|
-| **Qwen 生图**（本文件范围：Image-2.1 t2i / edit / 抠图） | `run_amd_gpu_no_ck_attention.bat` | ❌ 关 |
+| **Qwen 生图**（本文件范围：Image-2.1 t2i / edit / 抠图） | `run_amd_gpu_enable_dynamic_vram.bat` | ✅ 开（0.2.37 已修复） |
 | **H3 生视频**（t2v / i2v / ref2v） | `run_amd_gpu_enable_dynamic_vram.bat` | ✅ 开 |
 
-两个脚本**都带 `--enable-dynamic-vram`** —— 动态显存策略是 OOM 的关键，这条不变；
-区别只在 ck 开关，所以别认错脚本。
+两个脚本**都带 `--enable-dynamic-vram`** —— 动态显存策略是 OOM 的关键，这条不变。
+`run_amd_gpu_no_ck_attention.bat` 现仅作**回退/对照**（CK 出脏图时用）。
 
-**⚠️ 为什么改（2026-10-03 用户实测，与本文 09-30 的原结论相反）**：
-原文写「只能用 enable_dynamic_vram」，那条结论只验了「动态显存」，没拆开 ck 变量。
-后续实测发现 ck 对**生图**是负向的：
+**⚠️ 结论演进（务必读）**：
 
-- 图片会「脏」、与提示词不符；
-- **超过一定长度的提示词会丢失**。
-
-因此生图一律关 ck。反过来 ck 对**生视频**几乎看不出质量影响，且快一个数量级
-（20 分钟片子 → 5 分多钟），所以 H3 视频继续带 ck。
+- 2026-09-30 原文：「只能用 `enable_dynamic_vram`」（只验了动态显存，没拆开 ck 变量）；
+- 2026-10-03 实测：ck 对生图是负向的 —— 图片「脏」、与提示词不符、**超长提示词丢失**，故一律关 ck；
+- **✅ 2026-10-22 定案：该回归由 comfy-kitchen 0.2.37 的 `19ea55b`（#214，gfx11 `-inf` mask NaN）修复**。
+  Qwen 侧 A/B 复测：短 169 字符 MAE 1.09 / PSNR 43.5 dB，长 1451 字符（300+ token）MAE 2.36 / PSNR 31.4 dB，
+  四图高频能量 5.3–5.6（纯噪声 30+），CK 稳态快约 14%。**生图恢复默认开 ck。**
+- ck 对**生视频**本就几乎看不出质量影响，且快一个数量级（20 分钟片子 → 5 分多钟）。
 
 > 换其它启动方式动态显存策略不生效，Qwen-Image 2.1 会 OOM —— 这条仍然成立。
-> 交叉证据见 `plan\CK注意力回归问题调查报告.md`（Qwen 侧 token 64 边界二分）
+> 证据见 `plan\CK注意力回归问题调查报告.md` §1 定案 + `plan\ck_ab_qwen_20261022\`（Qwen 侧 A/B）
 > 与 `plan\ck_ab_20261002\`（H3 侧受控 A/B，结论：H3 走 ck 安全）。
+> 重测触发条件：kitchen 版本变动 / image-edit / 2K / 更激进 int8 量化 / 换卡。
 
 ---
 
