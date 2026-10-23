@@ -55,7 +55,7 @@ cond = ((h - mean_in) / std_in) @ W * std_out + mean_out
      nightly 为 `.../whl/nightly/rocm7.1`。**索引路径与 wheel 标签同名**——本机装的是 `+rocm10.1.0`，
      故取 `.../whl/rocm10.1`；装完以 `python -c "import torch; print(torch.__version__, torch.version.hip)"` 核对。
    - 旧版（2026-10-22 之前，留作回退参照）：`pip install torch==2.9.1+rocm7.2.1 torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm7.2.1`（HIP 7.2.53211）。
-   - ⚠️ **升级前后耗时未做同参数对照**，别把感官差异当结论，见 `Plan.md §11.10.7`。
+   - ✅ **同参数对照已完成**（2026-10-23，864×480 / 124 帧 / 20 步 / 预览关）：**370.6 s vs 2026-10-02 的 411.5 s = 1.11x**，但属**整栈升级**合计（torch + kitchen 0.2.37 + v0.39.2），不能单归 torch；且预览开会额外 +65.1 s（4 次解码）。详见 `Plan.md §11.10.7`。
    - 官方 portable 自带的是 **CUDA torch**，AMD 不可用；此命令会直接覆盖成 ROCm 版（装在
      `python_embeded` 里，无需手动建 venv）。装后校验：`python_embeded\python.exe -c "import torch; print(torch.cuda.is_available())"` 输出 `True`。
 3. 校验：启动一次，日志确认 `Recognized AMD device ... RX 7900 XTX ... ROCm`。

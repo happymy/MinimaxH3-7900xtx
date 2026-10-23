@@ -38,7 +38,7 @@
 | 项 | 值 |
 |---|---|
 | ComfyUI | **v0.39.2**（`ComfyUI_windows_portable`，commit `3c1b7a17`，2026-10-08）。⚠️ 早期章节写的 0.34.0 / 0.38.0 已过时，实机已升级 |
-| 推理后端 | **`torch 2.13.0+rocm10.1.0` / HIP 7.16.26385**（2026-10-22 09:49 从 `2.9.1+rocm7.2.1` 升级；torchvision 0.28.0 / torchaudio 2.11.0.2 同步，`gfx1100` 识别正常、cap `(11,0)`），识别为 AMD RX 7900 XTX（ROCm，非 CUDA）。升级前后耗时**未做同参数对照**，见 §11.10.7 |
+| 推理后端 | **`torch 2.13.0+rocm10.1.0` / HIP 7.16.26385**（2026-10-22 09:49 从 `2.9.1+rocm7.2.1` 升级；torchvision 0.28.0 / torchaudio 2.11.0.2 同步，`gfx1100` 识别正常、cap `(11,0)`），识别为 AMD RX 7900 XTX（ROCm，非 CUDA）。同参数对照见 §11.10.7：**1.11x（整栈升级合计，非 torch 单包）** |
 | 注意力内核 | `comfy-kitchen 0.2.37`（HIP int8 backend；`19ea55b` 修 #214 NaN，2026-10-22 实测 token>64 崩坏已修复）；triton 未安装 |
 | 启动脚本 | `run_amd_gpu_enable_dynamic_vram.bat`（**生视频 + 生图主力**，含 `--use-ck-attention`）；`run_amd_gpu_no_ck_attention.bat`（**回退/对照**，除 ck 开关外与主力逐字一致，2026-10-22 后不再默认用于生图，见 §12.4）；`run_amd_gpu.bat`（**已弃用**，仅 `.bak` 存档对照）。⚠️ **两个脚本都带 `--enable-dynamic-vram`，区别只在 ck 开关；只能同时开一个 ComfyUI** |
 | GGUF 加载器 | **CCTech Suite**（`ComfyUI-GGUF-Loader` v2.16.7）已装，注册 `UnetLoaderGGUF` / `CLIPLoaderGGUF` / **`CCTechClipProjLoader`**（`nodes/extra.py:74`，CLIPLoaderGGUF 子类，可一次性「加载 GGUF 文本塔 + 应用投影矩阵」，输出 CLIP），纯 torch+`gguf` 包解包（无 llama.cpp），内置 MiniMax H3 支持。⚠️ **已修复**：import 链上的 `krea2.py→vendor/depth_anything_v2.py` 缺 `cv2` 曾导致整包被 ComfyUI 跳过，已向 `python_embeded` 装 `opencv-python-headless`（阿里云源），现 73 节点正常注册 |
@@ -906,26 +906,27 @@ height = round(h_ratio * scale / multiple) * multiple
 - ComfyUI 0.34 原生 H3 支持：`comfy/ldm/minimax`、`text_encoders/minimax.py`、`comfy/sd.py`（MINIMAX=35、QWEN3VL_32B 检测）、`comfy_extras/nodes_minimax_h3.py`、`nodes_math.py`（MathExpressionNode / ComfyMathExpression）
 - CCTech Suite 本地代码：`nodes/extra.py`（CCTechClipProjLoader:74）、`nodes/gguf.py`（UnetLoaderGGUF:317）、`vendor/clipproj.py`（`detect_arch`、`_ARCH_BY_DIM`:73、`_MERGER_KEYS`:75）
 
-#### 11.10.7 2026-10-23 首测：torch 2.13.0 + ROCm 10.1（预览开 + step0 卸载）
+#### 11.10.7 2026-10-23 对照实测：torch 2.13 + ROCm 10.1（预览开/关双跑）
 
-**环境变更**（2026-10-22 09:49 升级）：`torch 2.9.1+rocm7.2.1` / HIP 7.2.53211 → **`torch 2.13.0+rocm10.1.0` / HIP 7.16.26385**（torchvision 0.28.0 / torchaudio 2.11.0.2 同步）；`gfx1100` 识别正常（cap `(11,0)`），comfy-kitchen 仍 0.2.37、内核仍 v0.39.2。
+**环境变更**（2026-10-22 09:49 升级）：`torch 2.9.1+rocm7.2.1` / HIP 7.2.53211 → **`torch 2.13.0+rocm10.1.0` / HIP 7.16.26385**（torchvision 0.28.0 / torchaudio 2.11.0.2 同步）；`gfx1100` 识别正常（cap `(11,0)`），comfy-kitchen 0.2.37、内核 v0.39.2。
 
-**单次实测**（`plan\bat\multisegment_8b_heretic` 的 8B heretic op 工作流）：864×480 / 5s = 124 帧 / 20 步 / seed `1875675917679523251`，单段；**预览开**（step 0 / 5 / 10 / 15 各解码 43 帧）+ **step 0 卸载 DiT 生效**。
+**对照任务**（`plan\bat\multisegment_8b_heretic` 的 8B heretic op 工作流，单段）：864×480 / 5s = 124 帧 / 20 步 / seed `1875675917679523251`，CK 开，`--mac-args`。唯一变量是全局预览开关（`iw-preview-flag.txt`）。
 
-| 指标 | 值 |
-|---|---|
-| 端到端 | **435.7 s**（ComfyUI 日志 `Prompt executed in 434.61 s`） |
-| 采样 20 步 | 4:56；逐步 13.62 → 13.74 → 13.93 → **14.81** s/it |
-| 产物 | `h3_multisegment_1875675917679523251.mp4`，216,736 B |
-| 显存 | DiT `11186.65 MB loaded`（可用 14,739 MB）；TE staged 16,721 MB |
+| # | 条件 | 端到端 | 产物 |
+|---|---|---|---|
+| A | **预览开**（step 0/5/10/15 各解码 43 帧）+ step 0 卸载 DiT | **435.7 s** | 216,736 B |
+| B | **预览关**（同时失去 step 0 卸载） | **370.6 s** | 216,736 B |
+| 参考 | 2026-10-02 受控 A/B 的 ck 臂（预览关，旧栈） | **411.5 s** | — |
 
-**⚠️ 这一次不能证明「ROCm 10.1 更快」**：2026-10-02 受控 A/B 的 ck 臂同档位（864×480 / 124 帧 / 20 步，**预览关**）是 **411.5 s**，本次 435.7 s 反而慢 24.2 s。差异可由预览解释——4 次 VAE 解码发生在采样 callback 内，直接计进 s/it（末段 14.81 明显高于首段 13.62），所以 s/it 与总时长都**不是纯采样速度**。
+**三条结论**：
 
-要判定升级是否提速，只有两条可比路径：
-1. **同参数（`--preview off`）重跑一次**同工作流同 seed，与 411.5 s 直接对差；
-2. 与**同条件 20s 长片**历史值对照（2026-10-08：fp16 20s = 2459 s / light VAE = 2391.3 s）。
+1. **预览开销 = 65.1 s**（435.7 − 370.6），约 **16.3 s / 次**（4 次 43 帧解码，发生在采样 callback 内，直接计入 s/it）。这解释了 A 跑里 s/it 从 13.62 爬到 14.81 的现象——**预览开/关的耗时不可直接互比**。
+2. **同参数下新栈比 2026-10-02 快 40.9 s（411.5 → 370.6，1.11x，快 9.9%）**。⚠️ 但这是**整栈升级**的合计收益，不是 torch 单独的功劳：期间还换了 comfy-kitchen 0.2.36 → 0.2.37、ComfyUI 0.38.0 → v0.39.2。要拆单包归因需逐包回退（未做，优先级低）。
+3. A、B 两跑产物**同为 216,736 B**，与「预览只影响中间可视化、不改采样数值」一致（未做逐字节比对——B 跑覆盖了同名输出）。
 
-只看总时长会把预览开销误记成退步，或把卸载收益误记成提速——两种误判都发生过。
+**显存侧（A 跑）**：DiT `11186.65 MB loaded`（可用 14,739 MB）；TE staged 16,721 MB；`step 0` 卸载后驻留显著下降，无崩溃。
+
+> 复用结论的前提：同工作流、同分辨率/帧数/步数、CK 开。换 20s 长片或改分辨率须重测（20s 历史值 2026-10-08：fp16 2459 s / light VAE 2391.3 s）。
 
 ---
 
