@@ -46,13 +46,16 @@ cond = ((h - mean_in) / std_in) @ W * std_out + mean_out
 ## 2. 安装 ComfyUI（便携版）
 
 1. 下载官方 ComfyUI Windows 便携版并解压（目标目录如 `D:\localAI\ComfyUI-last`）。
-2. **ROCm 后端**（本机验证：`torch 2.9.1+rocm7.2.1` / HIP 7.2.53211，识别为 AMD RX 7900 XTX）：
+2. **ROCm 后端**（2026-10-22 升级后本机验证：`torch 2.13.0+rocm10.1.0` / HIP 7.16.26385，`gfx1100` 识别为 AMD RX 7900 XTX；torchvision 0.28.0 / torchaudio 2.11.0.2 同步）：
    ```
-   python_embeded\python.exe -m pip install torch==2.9.1+rocm7.2.1 torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm7.2.1
+   python_embeded\python.exe -m pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm10.1
    ```
    - 官方依据（ComfyUI README「AMD users can install rocm and pytorch with pip」）：stable 命令式样
      `pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm6.4`，
-     nightly 为 `.../whl/nightly/rocm7.1`；本机 = rocm7.2.1 对应式样。
+     nightly 为 `.../whl/nightly/rocm7.1`。**索引路径与 wheel 标签同名**——本机装的是 `+rocm10.1.0`，
+     故取 `.../whl/rocm10.1`；装完以 `python -c "import torch; print(torch.__version__, torch.version.hip)"` 核对。
+   - 旧版（2026-10-22 之前，留作回退参照）：`pip install torch==2.9.1+rocm7.2.1 torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm7.2.1`（HIP 7.2.53211）。
+   - ⚠️ **升级前后耗时未做同参数对照**，别把感官差异当结论，见 `Plan.md §11.10.7`。
    - 官方 portable 自带的是 **CUDA torch**，AMD 不可用；此命令会直接覆盖成 ROCm 版（装在
      `python_embeded` 里，无需手动建 venv）。装后校验：`python_embeded\python.exe -c "import torch; print(torch.cuda.is_available())"` 输出 `True`。
 3. 校验：启动一次，日志确认 `Recognized AMD device ... RX 7900 XTX ... ROCm`。

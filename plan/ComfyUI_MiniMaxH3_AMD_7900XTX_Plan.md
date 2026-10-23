@@ -38,7 +38,7 @@
 | 项 | 值 |
 |---|---|
 | ComfyUI | **v0.39.2**（`ComfyUI_windows_portable`，commit `3c1b7a17`，2026-10-08）。⚠️ 早期章节写的 0.34.0 / 0.38.0 已过时，实机已升级 |
-| 推理后端 | `torch 2.9.1+rocm7.2.1` / HIP 7.2.53211，识别为 AMD RX 7900 XTX（ROCm，非 CUDA） |
+| 推理后端 | **`torch 2.13.0+rocm10.1.0` / HIP 7.16.26385**（2026-10-22 09:49 从 `2.9.1+rocm7.2.1` 升级；torchvision 0.28.0 / torchaudio 2.11.0.2 同步，`gfx1100` 识别正常、cap `(11,0)`），识别为 AMD RX 7900 XTX（ROCm，非 CUDA）。升级前后耗时**未做同参数对照**，见 §11.10.7 |
 | 注意力内核 | `comfy-kitchen 0.2.37`（HIP int8 backend；`19ea55b` 修 #214 NaN，2026-10-22 实测 token>64 崩坏已修复）；triton 未安装 |
 | 启动脚本 | `run_amd_gpu_enable_dynamic_vram.bat`（**生视频 + 生图主力**，含 `--use-ck-attention`）；`run_amd_gpu_no_ck_attention.bat`（**回退/对照**，除 ck 开关外与主力逐字一致，2026-10-22 后不再默认用于生图，见 §12.4）；`run_amd_gpu.bat`（**已弃用**，仅 `.bak` 存档对照）。⚠️ **两个脚本都带 `--enable-dynamic-vram`，区别只在 ck 开关；只能同时开一个 ComfyUI** |
 | GGUF 加载器 | **CCTech Suite**（`ComfyUI-GGUF-Loader` v2.16.7）已装，注册 `UnetLoaderGGUF` / `CLIPLoaderGGUF` / **`CCTechClipProjLoader`**（`nodes/extra.py:74`，CLIPLoaderGGUF 子类，可一次性「加载 GGUF 文本塔 + 应用投影矩阵」，输出 CLIP），纯 torch+`gguf` 包解包（无 llama.cpp），内置 MiniMax H3 支持。⚠️ **已修复**：import 链上的 `krea2.py→vendor/depth_anything_v2.py` 缺 `cv2` 曾导致整包被 ComfyUI 跳过，已向 `python_embeded` 装 `opencv-python-headless`（阿里云源），现 73 节点正常注册 |
@@ -906,6 +906,27 @@ height = round(h_ratio * scale / multiple) * multiple
 - ComfyUI 0.34 原生 H3 支持：`comfy/ldm/minimax`、`text_encoders/minimax.py`、`comfy/sd.py`（MINIMAX=35、QWEN3VL_32B 检测）、`comfy_extras/nodes_minimax_h3.py`、`nodes_math.py`（MathExpressionNode / ComfyMathExpression）
 - CCTech Suite 本地代码：`nodes/extra.py`（CCTechClipProjLoader:74）、`nodes/gguf.py`（UnetLoaderGGUF:317）、`vendor/clipproj.py`（`detect_arch`、`_ARCH_BY_DIM`:73、`_MERGER_KEYS`:75）
 
+#### 11.10.7 2026-10-23 首测：torch 2.13.0 + ROCm 10.1（预览开 + step0 卸载）
+
+**环境变更**（2026-10-22 09:49 升级）：`torch 2.9.1+rocm7.2.1` / HIP 7.2.53211 → **`torch 2.13.0+rocm10.1.0` / HIP 7.16.26385**（torchvision 0.28.0 / torchaudio 2.11.0.2 同步）；`gfx1100` 识别正常（cap `(11,0)`），comfy-kitchen 仍 0.2.37、内核仍 v0.39.2。
+
+**单次实测**（`plan\bat\multisegment_8b_heretic` 的 8B heretic op 工作流）：864×480 / 5s = 124 帧 / 20 步 / seed `1875675917679523251`，单段；**预览开**（step 0 / 5 / 10 / 15 各解码 43 帧）+ **step 0 卸载 DiT 生效**。
+
+| 指标 | 值 |
+|---|---|
+| 端到端 | **435.7 s**（ComfyUI 日志 `Prompt executed in 434.61 s`） |
+| 采样 20 步 | 4:56；逐步 13.62 → 13.74 → 13.93 → **14.81** s/it |
+| 产物 | `h3_multisegment_1875675917679523251.mp4`，216,736 B |
+| 显存 | DiT `11186.65 MB loaded`（可用 14,739 MB）；TE staged 16,721 MB |
+
+**⚠️ 这一次不能证明「ROCm 10.1 更快」**：2026-10-02 受控 A/B 的 ck 臂同档位（864×480 / 124 帧 / 20 步，**预览关**）是 **411.5 s**，本次 435.7 s 反而慢 24.2 s。差异可由预览解释——4 次 VAE 解码发生在采样 callback 内，直接计进 s/it（末段 14.81 明显高于首段 13.62），所以 s/it 与总时长都**不是纯采样速度**。
+
+要判定升级是否提速，只有两条可比路径：
+1. **同参数（`--preview off`）重跑一次**同工作流同 seed，与 411.5 s 直接对差；
+2. 与**同条件 20s 长片**历史值对照（2026-10-08：fp16 20s = 2459 s / light VAE = 2391.3 s）。
+
+只看总时长会把预览开销误记成退步，或把卸载收益误记成提速——两种误判都发生过。
+
 ---
 
 ### 11.11 破限 8B 文本编码器（Heretic v1.3.0）落地与 A/B 实测（2026-09-30 13:00~13:20）
@@ -1165,12 +1186,12 @@ if ((Get-NetTCPConnection -LocalPort 8188 -State Listen -ErrorAction SilentlyCon
 | 目录 | 装什么 | 规模 |
 |---|---|---|
 | `D:\localAI\ComfyUI-last\plan\` | **本文件所在**。H3 生视频全部资产：工作流（UI + API 两格式）、`bat\` 脚本族、提示词模板、实测数据、ck A/B 证据 | 446 文件 / 37.15 MB（2026-10-08 重数，含 `LynnReal light VAE 待长测（0.39.2 已定案）` 104 文件 / 2.34 MB） |
-| `D:\localAI\ComfyUI-last\plan2\` | **Qwen-Image 2.1 生图线**：部署总结、17 份工具脚本、22 份实验 API 图、上游 issue #226 材料 | 75 文件 / 4.08 MB |
+| `D:\localAI\ComfyUI-last\plan2\` | **Qwen-Image 2.1 生图线**：部署总结、17 份工具脚本、22 份实验 API 图、上游 issue #226 材料（该 issue 已随 0.2.37 关闭） | 75 文件 / 4.09 MB |
 
 两者**不是父子关系，是并列的姊妹目录**。仓库侧对应 `plan/` 与 `plan2/` 两个顶层目录。
 
 唯一交集：`CK注意力回归问题调查报告.md` —— Qwen 侧崩坏证据 + H3 侧安全结论。
-**权威版在 `plan\`**（350 行，§7.3 已关闭），`plan2\qwen21-tools\` 下是 2026-10-06 同步的副本。
+**权威版在 `plan\`**（361 行，§7.3 已关闭、2026-10-22 定案已修复），`plan2\qwen21-tools\` 下是 2026-10-22 同步的副本。
 
 详见 `plan\README.md`（H3 侧资产地图）与 `plan2\README.md`（Qwen 侧资产地图）。
 

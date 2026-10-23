@@ -44,7 +44,7 @@
 
 ## 2. 环境
 
-| 项 | 值 |
+| 项 | 值（原报告，2026-10-01 崩坏复现环境） |
 |---|---|
 | GPU | AMD Radeon RX 7900 XTX 24GB |
 | 架构 | RDNA3 / gfx1100 |
@@ -57,6 +57,8 @@
 | 扩散模型 | `qwen-image-2.1-UC-Q4_K_M.gguf` / `Q8_0.gguf` |
 | 文本编码器 | `qwen3vl_8b_int8_convrot.safetensors` |
 | VAE | `qwen_image_2.1_vae_bf16.safetensors` |
+
+> **§1 的 2026-10-22 复测环境不同**：`torch 2.13.0+rocm10.1.0` / HIP 7.16.26385、comfy-kitchen **0.2.37**、ComfyUI v0.39.2。即「已修复」这一结论是在**整栈都升级过**的环境下取得的，不能拆给单个包；要拆分归因需在 0.2.36 + 新 torch 上复跑（未做）。
 | 采样 | euler / simple / 25 步 / cfg 1.0 / 1024×1024 |
 
 复现命令（干净对照只需去掉 `--use-ck-attention`）：
