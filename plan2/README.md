@@ -1,5 +1,9 @@
 # plan2 — Qwen-Image 2.1 (GGUF) 工作区
 
+> **⚠️ 旧环境资产（2026-11-12 起）**：本目录描述的是旧 portable 环境（`D:\localAI\ComfyUI-last\ComfyUI_windows_portable`）
+> 里的 Qwen-Image 2.1 生图线，与现行 `plan3\`（Comfy Desktop，H3 视频）不是同一套环境。
+> 相关模型与工作流已复制进 Comfy Desktop，见 `plan3\README.md` §1.2；本目录的脚本路径与启动参数**已不能直接照抄**。
+
 > 本目录是 **`plan\` 的姊妹目录**，不是它的子目录。
 > `plan\` 放 MiniMax H3 生视频的全部资产；`plan2\` 只放 **Qwen-Image 2.1 生图**这条线。
 > 两者共同构成 `D:\localAI\ComfyUI-last\` 下的实测资产，仓库侧对应 `plan2/`。

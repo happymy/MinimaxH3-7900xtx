@@ -1,0 +1,30 @@
+# ============================================================
+# 分镜 3 块 -> --duration 4,4,4（默认 --max-duration 5，不触发拆分）
+# 块内无时间戳：每块独立成片，块内时间戳不可靠。
+# 三块动作均为幂等（循环/状态），拆分也安全。
+# ============================================================
+
+# ---- 块 1：女孩站立，抬手挥手并保持 ----
+integrated_multimodal_description: [Shot 1] Live-action, 3D CG, a full-body shot frames a school-age girl standing at the exact centre of a seamless pure-white studio backdrop, with clear space above her head and on both sides. The camera holds a static shot at eye level throughout, with the framing and focal length completely locked. She is about eleven years old, with long straight black hair parted down the centre and falling to her chest, an oval face, dark brown almond-shaped eyes, fair skin, and a calm closed-lip smile. She wears a crisp white short-sleeved school shirt with a navy piped collar and small black buttons, a navy A-line pleated skirt to just above the knee, opaque white tights, and black patent Mary Jane shoes with small metal buckles. She stands upright with her legs together and raises her right hand to shoulder height with the palm facing the lens, then moves that raised hand side to side in a slow, even wave and holds the hand up at the end. Her left arm stays straight down at her side. Her feet never move and she never steps or turns. Broad diffused frontal illumination from a large softbox spreads even light across her face and uniform, leaving only a faint soft contact shadow on the white floor beneath her shoes. Exactly one person is visible in the frame, fully specified and centred. The frame edges are razor-sharp with zero softening, the fabric weave and individual hair strands are resolved, and the picture contains no captions, no logos, and no on-screen text of any kind.
+
+overall_soundscape: A quiet, empty studio room tone runs continuously, with a faint soft swish of her shirt sleeve during the wave and a light breath each time her chest rises.
+
+non_diegetic_music: N/A
+
+###
+
+# ---- 块 2：男孩站立，抬手挥手并保持（与块 1 同一机位，靠首帧续接延续）----
+integrated_multimodal_description: [Shot 1] Live-action, 3D CG, a full-body shot frames a school-age boy standing at the exact centre of a seamless pure-white studio backdrop, with clear space above his head and on both sides. The camera holds a static shot at eye level throughout, with the framing and focal length completely locked. He is about nine years old, with short textured black hair and a side-swept fringe, a round face, dark brown eyes, fair skin, and a broad toothy smile. He wears a crisp white short-sleeved button-up school shirt with a small navy shield emblem on the left chest pocket, navy shorts to just above the knee with an elastic waist, dark ankle socks, and white sneakers with grey and black trim. He stands upright and lifts his left hand out to shoulder height with the palm facing the lens, then moves that raised hand side to side in a slow, even wave and holds the hand up at the end. His right arm stays straight down at his side. His feet never move and he never steps or turns. Broad diffused frontal illumination from a large softbox spreads even light across his face and uniform, leaving only a faint soft contact shadow on the white floor beneath his shoes. Exactly one person is visible in the frame, fully specified and centred. The frame edges are razor-sharp with zero softening, the fabric weave and individual hair strands are resolved, and the picture contains no captions, no logos, and no on-screen text of any kind.
+
+overall_soundscape: A quiet, empty studio room tone runs continuously, with a faint soft swish of his shirt sleeve during the wave and a light breath each time his chest rises.
+
+non_diegetic_music: N/A
+
+###
+
+# ---- 块 3：女孩与男孩并肩站立，同时转向对方相视而笑并保持 ----
+integrated_multimodal_description: [Shot 1] Live-action, 3D CG, a full-body shot frames two school-age children standing side by side at the exact centre of a seamless pure-white studio backdrop, with clear space above their heads and on both sides. The camera holds a static shot at eye level throughout, with the framing and focal length completely locked. On the left of the frame, a girl about eleven years old has long straight black hair parted down the centre, an oval face, dark brown almond-shaped eyes, fair skin, and wears a crisp white short-sleeved school shirt with a navy piped collar, a navy A-line pleated skirt to just above the knee, opaque white tights, and black patent Mary Jane shoes. On the right of the frame, a boy about nine years old has short textured black hair with a side-swept fringe, a round face, dark brown eyes, fair skin, and wears a crisp white short-sleeved button-up school shirt with a small navy shield emblem on the left chest pocket, navy shorts, dark ankle socks, and white sneakers with grey and black trim. The two children stand upright with a small even gap between them, both arms resting straight down at their sides, and both turn their heads toward each other to share a calm, warm smile, holding that turned-head smiling pose to the end of the clip. Their feet never move and neither of them steps. Broad diffused frontal illumination from a large softbox spreads even light across both faces and uniforms, leaving only faint soft contact shadows on the white floor beneath their shoes. Exactly two people are visible in the frame, both fully specified. The frame edges are razor-sharp with zero softening, the cotton weave of both shirts and individual hair strands are resolved, and the picture contains no captions, no logos, and no on-screen text of any kind.
+
+overall_soundscape: A quiet, empty studio room tone runs continuously, with two light breaths audible each time their chests rise and a faint soft rustle of cotton as their heads turn.
+
+non_diegetic_music: N/A

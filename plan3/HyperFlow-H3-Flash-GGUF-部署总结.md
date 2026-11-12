@@ -1,0 +1,708 @@
+# HyperFlow H3 Flash（GGUF）Comfy Desktop 部署总结
+
+> 落地目录：`D:\localAI\ComfyUI-last\plan3\`
+> 新环境：`C:\Comfy-Desktop\`（ComfyUI 0.44.2 / ROCm 7.14 / RX 7900 XTX）
+> 完成日期：2026-11-11（连续生成问题 2026-11-12 定位并解决）
+> 状态：**已完成**。单次 3 连测通过（277.87 / 281.70 / 293.65 s）；连续第二次爆显存已定位为「上一轮没卸」，解法见 §7.5，实测通过
+
+---
+
+## 1. 目标
+
+在**新装的 Comfy Desktop 环境**里跑通 HyperFlow H3 Flash（MiniMax H3 14B 的加速蒸馏版），
+输出带音轨的短片，并尽量复用旧 portable 环境（`plan\` / `plan2\`）已有的模型。
+
+硬约束：
+
+| 约束 | 值 | 后果 |
+|---|---|---|
+| 显卡 | RX 7900 XTX，gfx1100，24 GB | 无 Blackwell FP4、无 CUDA |
+| 内存 | 32 GB | 放不下 32B 编码器 |
+| 旧环境 | **不许改、不许升级** | 只能单向复制资产 |
+| 前台 | 用户可能正在跑别的 ComfyUI 任务 | 安装/校验不得占 GPU |
+
+---
+
+## 2. 结论
+
+| 项 | 结果 |
+|---|---|
+| 工作流 | **4 条 UI**（`hyperflow_{t2v,i2v,flf2v,ref2v}_clipproj_8b.json`）+ **4 条 API payload**（`plan3\API_workflows\…_api.json`，§6.2），均带音轨 |
+| 实测 | t2v 3 次成功，`Prompt executed in` 277.87 / 281.70 / 293.65 s |
+| 成片参数 | 1344×768 @ 24 fps，124 帧，5.167 s，H.264 + AAC 32 kHz 立体声 |
+| 启动参数 | `--fast-disk --use-ck-attention` |
+| 显存 | **已在极限**（§7.3）——开跑前必须清空其它占显存的程序 |
+| 连续生成 | **每次点 Queue 前必须先 `/free`**（§7.5）：跑完一次会留 14.5 GB 驻留，第二次装编码器时必爆。4 s 拿回来，只多付 13 s 重载 |
+| 静态校验 | 4 个图各自双向一致（link/node：t2v 18/16、i2v 19/17、flf2v 20/18、ref2v 21/18）；`bat\` 的 8 种 API 图节点名与输入名全解析（`check_graphs.py`）；GGUF 结构与 loader 预期逐项对上 |
+| 提示词 | 按 `bat\提示词模板\MiniMax-H3-提示词书写规则.md` 写；**不能写禁令**（§9）：CFG 锁死 1、无负向分支，`no anime` 里的词照样进条件向量 |
+| 遗留 | 8B 投影的语义保真度未逐项评估；`bat\` 脚本尚未实跑（§11） |
+
+---
+
+## 3. 环境
+
+| 项 | 旧（`plan\` / `plan2\`） | 新（本文件） |
+|---|---|---|
+| ComfyUI | 0.38.0 | **0.44.2** |
+| Python | `python_embeded` | `.venv` **3.13.12** |
+| torch | 2.9.1+rocm7.2.1 | **2.12.0+rocm7.14.0** |
+| comfy-kitchen | 0.2.36 → 0.2.37 | **0.2.40** |
+| comfy-aimdo | 0.5.5 | **0.6.0** |
+| numpy | — | 2.5.4 |
+| transformers | — | 5.20.2 |
+| 前端 / 模板 | 1.53.6 / 0.11.70 | 1.57.6 / 0.11.103 |
+| 模型根目录 | `ComfyUI\models\` | `C:\Comfy-Desktop\ComfyUI-Shared\models\`（Desktop 托管） |
+| 启动方式 | `.bat` | Desktop 内置启动器 + 自定义参数 |
+
+`manifest.json` 记的基线是 `v0.42.1-env1`，ComfyUI 已自行更新到 0.44.2
+（`comfyui_version.py` 与启动日志一致）。
+
+桌面版启动器**不能**在命令行里加参数，要改 Desktop 的启动参数框，实际等价于：
+
+```
+python -s ComfyUI\main.py --feature-flag show_signin_button=true --enable-assets --enable-manager \
+  --extra-model-paths-config "...\Comfy Desktop\instance-model-paths\inst-1794395587998.yaml" \
+  --input-directory  D:\Comfy-Desktop\ComfyUI-Shared\input \
+  --output-directory D:\Comfy-Desktop\ComfyUI-Shared\output \
+  --fast-disk --use-ck-attention          # ← 这两个是我们加的
+```
+
+---
+
+## 4. 选型：为什么是 GGUF + 8B + ClipProj
+
+这一节是本次最贵的部分，**换方案前先读完**。
+
+### 4.1 官方给了两套权重，只能用 GGUF 那套
+
+HyperFlow 仓库同时发布 `fl2va_gguf/` 与 `fl2va_int8_convrot_comfyui/`。选 GGUF 的理由：
+
+| 理由 | 证据 |
+|---|---|
+| 体积 | fl2va INT8 约 16.0 GB，GGUF Q4_K_M **9.05 GB** |
+| 内核路线 | 官方 README：INT8 线性的计算走 ComfyUI 自带 INT8 kernel，**长片段还要走 comfy-kitchen 的 Triton kernel**（按行分块，规避 32 位偏移） |
+| 本机无 triton | `.venv` 里 `importlib.util.find_spec("triton")` → `None`；`comfy/quant_ops.py:33-41` 在 import 失败时 `ck.registry.disable("triton")`，INT8 内核可用性**无法保证** |
+| 模型卡偏好不适用 | 模型卡写「diffusion 首选 `int8_convrot`，前提是能用 cu130 的 pytorch」——那是 CUDA 的前提，ROCm 没有这条路径 |
+
+结论：**GGUF 是唯一有把握的一条**。将来若要试 INT8，先跑 `comfy_kitchen.registry.list_backends()`
+确认 triton/hip 后端是否真的拉起来了。
+
+### 4.2 32B 文本编码器在这台机器上不可达
+
+原版工作流用 `qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors`（15.7 GB）。它在 gfx1100 上跑不了，
+**但原因不是「nvfp4 需要 Blackwell」**（模型卡明确说"The nvfp4 text encoder does not require
+Blackwell GPU to use"）。真正的原因是 ComfyUI 的量化门控：
+
+```python
+# comfy/model_management.py:2057
+def supports_nvfp4_compute(device=None):
+    ...
+    if not is_nvidia():
+        return False
+
+# comfy/ops.py:1872
+def get_disabled_quant_formats(device=None):
+    if not comfy.model_management.supports_nvfp4_compute(device):
+        disabled.add("nvfp4")
+```
+
+AMD 上 nvfp4 被禁 → 编码器退回 `MixedPrecisionOps`（bf16）——启动日志里那句
+`Using MixedPrecisionOps for text encoder` 就是这个意思。于是 32B 要按 **bf16 常驻**：
+≈ 64 GB，24 GB 显存 + 32 GB 内存都装不下。
+
+本地另有 `qwen3vl_32b_minimax_h3-Q4_K_M.gguf`（18.22 GB），这条路也堵死：
+ComfyUI 认 32B 的判据在 `comfy/sd.py:1815`，要求
+`visual.deepstack_merger_list.0.norm.weight`（**无 `model.` 前缀**）与 `model.layers.49.*` 同时存在。
+GGUF 转换只打包 LLM，**不含 vision tower、也没有配套 mmproj**，判据不成立 → 继续往下走到通用分支，
+按宽度 5120 认成 `MISTRAL3_24B`。**它不会报错，会静默走错编码器实现。**
+
+> 另有隐性代价：没有 vision tower，ref2v（用参考图锁角色）这条路也一起废了。
+
+### 4.3 所以走 8B + 校准投影
+
+| | Qwen3-VL-8B | Qwen3-VL-32B |
+|---|---|---|
+| 隐藏宽度 | 4096 | 5120（＝ DiT 要的维度） |
+| 层数 | 36 | 50（截断） |
+| 到 DiT | 过一层学出来的矩阵 | 零转换 |
+| 实测 cosine | 线性 0.9289 / `-mlp` **0.9449** | 1.0 |
+| 体积 | 10.02 GB（heretic fp8） | 15.7 GB nvfp4（本机要摊成 64 GB bf16） |
+
+ClipProj 能这么做的原理：H3 只要**单个 5120 维隐藏态**（不像 Krea2 要 12 个 tap），
+且 4B / 8B / 32B **共用同一 tokenizer**（151936），所以可以逐位置做闭式岭回归。
+
+选型细节：
+
+- **用 8B，不用 4B**：4B cosine 0.712，差得远。
+- **用 `-mlp` 版**（`mmh3-8b-ClipProj-v3.1-mlp`），不用线性版：0.9449 vs 0.9289。
+- **不用 heretic 版**：ClipProj 作者的对照实测里，abliterated 编码器反而更差（-0.026 / -0.034）。
+  **但本环境用的是 heretic**（用户指定，`qwen3-vl-8b-heretic-1.3.0_fp8_e4m3fn`）——
+  差在语义保真度，**不影响画风**，画风问题看 §9。
+- **不用 `ClipProjLoader`（all-in-one）**：作者明确写单卡上有害——它会把编码器钉在卡上白占 4–9 GB。
+  正确接法是原生 `Load CLIP`（type `boogu`）+ `ClipProj Apply`。
+
+### 4.4 三个不能换的采样参数
+
+| 参数 | 值 | 换了会怎样 |
+|---|---|---|
+| `HyperFlowSigmas` | **6** | 4 更快但糙、8 更细但慢，都不是默认分布 |
+| `KSamplerSelect` | **euler** | 不报错，出烂片 |
+| `BasicGuider` | **CFG 1**（无负面提示词） | 不报错，出烂片 |
+
+模型是蒸馏过的，按这套 schedule 训练。这三项是「改了不报错，只是白跑 5 分钟」的典型。
+
+---
+
+## 5. 安装清单
+
+### 5.1 自定义节点
+
+| 节点 | 来源 | commit | 备注 |
+|---|---|---|---|
+| `ComfyUI-GGUF` | `city96/ComfyUI-GGUF` | `6ea2651` | **必须是 city96 原版**（见 §8.4） |
+| `ComfyUI-HyperFlow-Flash` | `Video-Rebirth/ComfyUI-HyperFlow-Flash` | `356649c`（v1.1.1） | 提供 4 个 loader 节点 |
+| `ComfyUI-ClipProj` | 从旧环境整目录复制 | `c01ba8f`（v0.1.4） | 无 pip 依赖 |
+
+ClipProj 的两个 hook 在 0.44.2 上签名仍然吻合，加载不会失败：
+`execution.PromptExecutor.execute_async`（`execution.py:736`）、
+`comfy.model_management.unload_all_models`（`model_management.py:2171`）。
+
+git clone 一律走加速代理（大陆直连 GitHub 会断）：
+
+```powershell
+git clone --depth 1 https://v4.gh-proxy.org/https://github.com/city96/ComfyUI-GGUF <custom_nodes>\ComfyUI-GGUF
+git clone --depth 1 https://v4.gh-proxy.org/https://github.com/Video-Rebirth/ComfyUI-HyperFlow-Flash <custom_nodes>\ComfyUI-HyperFlow-Flash
+```
+
+### 5.2 pip
+
+只有一个包要装：
+
+```powershell
+<ComfyUI>\.venv\Scripts\python.exe -m pip install gguf -i https://mirrors.aliyun.com/pypi/simple/
+```
+
+- 实得 **gguf 0.19.0**，依赖 `numpy 2.5.4` / `pyyaml` / `requests` / `tqdm` 全部已满足。
+- **清华源对这个包返回 403**（`pypi.tuna.tsinghua.edu.cn/.../gguf-0.19.0-...whl`），换阿里云即成功。
+- `sentencepiece` / `protobuf` 是 ComfyUI-GGUF 的 optional，本例不需要。
+
+### 5.3 模型（6 个文件，全部字节数与源一致）
+
+| 角色 | 目录 | 文件 | 字节 | GB |
+|---|---|---|---|---|
+| DiT（GGUF） | `diffusion_models` | `minimax_h3_fl2va_hyperflow_flash_14b-Q4_K_M.gguf` | 9,053,456,480 | 9.05 |
+| DiT（GGUF，ref2v 段 0） | `diffusion_models` | `minimax_h3_ref2va_hyperflow_flash_14b-Q4_K_M.gguf` | 9,220,352,512 | 9.22 |
+| 文本编码器 | `text_encoders` | `qwen3-vl-8b-heretic-1.3.0_fp8_e4m3fn.safetensors` | 10,017,064,632 | 10.02 |
+| 投影矩阵 | `clip_projections` | `mmh3-8b-ClipProj-v3.1-mlp.safetensors` | 604,093,248 | 0.60 |
+| 视频 VAE | `vae` | `minimax_h3_video_vae_fp16.safetensors` | 5,207,808,496 | 5.21 |
+| 音频 VAE | `vae` | `minimax_h3_audio_vae_fp32.safetensors` | 605,254,808 | 0.61 |
+
+落点：
+
+```
+C:\Comfy-Desktop\ComfyUI-Shared\models\diffusion_models\    ← 两个 DiT（fl2va + ref2va）
+C:\Comfy-Desktop\ComfyUI-Shared\models\text_encoders\       ← 8B heretic 编码器
+C:\Comfy-Desktop\ComfyUI-Shared\models\vae\                 ← 两个 VAE
+C:\Comfy-Desktop\ComfyUI-Installs\ComfyUI\ComfyUI\models\clip_projections\   ← 投影矩阵（不在共享目录）
+```
+
+两个 VAE、投影矩阵、heretic 编码器都从旧环境 `robocopy` 直接复制（省掉 25 GB 下载）；
+编码器复制到新环境的 `text_encoders` 时也是**复制**，不是硬链接（旧环境不许动）。
+两个 DiT GGUF 是新下的：hf-mirror + Aria2 RPC（16 线程），约 15 MB/s，每个约 10 分钟。
+
+### 5.4 Desktop 的模型路径机制（容易踩）
+
+`C:\Users\<user>\AppData\Roaming\Comfy Desktop\instance-model-paths\inst-*.yaml`
+由 Desktop 生成，给**两个** `base_path`（`C:\Comfy-Desktop\ComfyUI-Shared\models` 与
+`D:\Comfy-Desktop\ComfyUI-Shared\models`），每个下面挂全套子目录名，**其中包含
+`clip_projections`**。启动日志会逐行打印：
+
+```
+Adding extra search path diffusion_models C:\Comfy-Desktop\ComfyUI-Shared\models\diffusion_models
+...
+Adding extra search path clip_projections C:\Comfy-Desktop\ComfyUI-Shared\models\clip_projections
+Adding extra search path clip_projections D:\Comfy-Desktop\ComfyUI-Shared\models\clip_projections
+```
+
+这些是**追加**在 ComfyUI 自身 `models\` 之后的，不是替换。在此基础上 ClipProj 又补一刀：
+
+```python
+# clipproj_projection.py:51  register_folder()
+path = os.path.join(folder_paths.models_dir, "clip_projections")
+existing = folder_paths.folder_names_and_paths.get(FOLDER)
+if existing is None:
+    folder_paths.folder_names_and_paths[FOLDER] = ([path], {".pt", ".safetensors"})
+elif path not in existing[0]:
+    existing[0].append(path)          # ← 已经存在时是 append，不是覆盖
+```
+
+所以 `clip_projections` 实际有**三个**候选位置：
+两个共享目录（yaml 给的）+ `ComfyUI\models\clip_projections`（ClipProj 追加的）。
+本次把矩阵放在第三个，实测被正确列出并加载。
+
+### 5.5 绝对不要装的东西
+
+**`ComfyUI-GGUF-Loader`（CCTech 分叉）**——旧环境 `plan2` 用的就是它（改过 `IMG_ARCH_LIST`）。
+它和 city96 原版**注册同一个节点名 `UnetLoaderGGUF`**，按 custom_nodes 目录名排序，排在后面的会覆盖前面的。
+HyperFlow 的 `GGUFBackend.find()` 会拿到分叉的实现，而分叉没有顶层 `dequant` 模块 → `KeyError`。
+
+顺带：`loader_nodes.py:117` 的 `supports_disk()` 要求 `GGUFModelPatcher` 具备
+`mmap_released` 与 `pin_weight_to_device`；缺任何一个就退回内存模式，`--fast-disk` 白设。
+
+---
+
+## 6. 工作流改了什么
+
+4 个文件，全部由 `tools\make_workflow.py` 从官方 `example_workflows\hyperflow_<family>.json`
+生成（`tools\stock_<family>.json` 是快照），可随时重跑：
+
+| 文件 | DiT | 额外输入 | 输出前缀 |
+|---|---|---|---|
+| `hyperflow_t2v_clipproj_8b.json` | `fl2va` | — | `hyperflow/t2v` |
+| `hyperflow_i2v_clipproj_8b.json` | `fl2va` | `first_frame` | `hyperflow/i2v` |
+| `hyperflow_flf2v_clipproj_8b.json` | `fl2va` | `first_frame` + `last_frame` | `hyperflow/flf2v` |
+| `hyperflow_ref2v_clipproj_8b.json` | **`ref2va`** | 2 张参考图（`<Picture 1>`/`<Picture 2>`） | `hyperflow/ref2v` |
+
+四个图的骨架相同，脚本按 `type` 找节点（不写死 id），每个 family 只做这三处改动：
+
+| # | 改动 | 原 | 新 |
+|---|---|---|---|
+| 1 | `Load CLIP` 模型 + `type` | `qwen3vl_32b_minimax_h3_nvfp4_awq` / `minimax` | `qwen3-vl-8b-heretic-1.3.0_fp8_e4m3fn` / **`boogu`**（走 `sd.py` 的 Qwen3-VL-8B + H3 分支） |
+| 2 | 新增 `ClipProj Apply`，串进 clip 链 | CLIP → `MiniMaxH3*ToVideo.clip` | CLIP → **Apply**(`mmh3-8b-ClipProj-v3.1-mlp`) → `MiniMaxH3*ToVideo.clip` |
+| 3 | `HyperFlowLoader.weights_in` | `auto` | **`disk`**（装不下的权重留在 GGUF 映射里流式读，不复制进 RAM） |
+
+图内 MarkdownNote 一并重写成对应的 8B 清单。
+
+**未改动**：两个 `VAELoader`、`MiniMaxH3*ToVideo`（1344×768×124）、
+`RandomNoise`（seed 42 fixed）、`HyperFlowSigmas`（6）、`KSamplerSelect`（euler）、
+`BasicGuider`（CFG 1）、`SamplerCustomAdvanced`、`VAEDecode` ×2、`CreateVideo`（24 fps）、
+`SaveVideo`。
+
+自检（`tools\check_workflow.py`，4 个图逐个跑）：
+
+```
+links: 18 nodes: 16                              # t2v；i2v 19/17、flf2v 20/18、ref2v 21/18
+ok: 8B + ClipProj wiring as expected (MiniMaxH3ImageToVideo, weights_in=disk)
+ok: every link agreed on both ends
+```
+
+`check_workflow.py` 从 `ClipProjApply` 反查两端，不再是写死 id 的断言，所以 4 个图共用一份检查。
+
+### 6.1 `bat\` 脚本（API 直连，不经网页）
+
+从 `plan\bat` 移植，只改 `build_graph()` 里的 4 处（loader / CLIP 链 / sigmas / sampler），
+分段、末帧续接、ffmpeg 拼接逻辑原样复用：
+
+| 目录 | 入口 | 作用 |
+|---|---|---|
+| `multisegment_8b_heretic\` | `gen_h3_multisegment-8b-heretic.bat` | 一条提示词、N 段等长，段间末帧续接 |
+| `scenes_8b_heretic\` | `gen_h3_scenes-8b-heretic.bat` | 每段独立提示词 + 独立时长，超长自动拆 |
+| `scenes_ref_8b_heretic\` | `gen_h3_scenes_ref-8b-heretic.bat` | 同上 + 参考图/视频（段 0 走 ref2va） |
+| `ref2va_8b_heretic\` | `gen_h3_ref2va-8b-heretic.bat` | 参考图生视频，多段末帧续接 |
+| `extract_frames\` | `gen_extract_frames.bat` | 抽首/中/末帧（与模型无关） |
+| `qc_frames\` | `gen_h3_qc_frames.bat` | 均匀抽 N 帧 + contact sheet（与模型无关） |
+| `free_vram\` | `free_vram.bat` | 通用 `/free`：`--status` / `--interval N` 挂机定时清 / `--no-verify` |
+| `提示词模板\` | — | `MiniMax-H3-提示词书写规则.md`（19 KB，**写提示词前先看**）+ 视频 / 静帧 / 照片三个 `.txt` 示例。规则 md 与 `.txt` 冲突时以 md 为准（§9） |
+| `测试素材\` | — | 两张示例参考图（`1_女孩.png` / `2_男孩.png`），与 `ref2va_8b_heretic\img\` 同内容 |
+
+| 移植点 | 旧（`plan\bat`） | 新（`plan3\bat`） |
+|---|---|---|
+| DiT | `UnetLoaderGGUF` + `*_pruned-Q4_K_M` | `HyperFlowLoader(weights_in='disk')` + `*_hyperflow_flash_14b-Q4_K_M` |
+| CLIP | `CCTechClipProjLoader`（判官版，单卡钉死） | `CLIPLoader(boogu)` → `ClipProjApply` |
+| 投影 | `mmh3-8b-ClipProj-v3.1`（非 mlp） | `mmh3-8b-ClipProj-v3.1-mlp` |
+| sigmas + sampler | `BasicScheduler simple` 20 步 + `res_multistep`/`er_sde` | `HyperFlowSigmas`（4/6/8）+ `euler`，CFG 1 |
+| 采样后卸载 | `ForceUnloadBeforeDecode` ×2 | 删除，改由各脚本内的 `free_vram()`（POST `/free`）负责 |
+
+`--steps` 只接受 `4/6/8`（`HyperFlowSigmas` 的硬约束），交互输入越界回退默认 6。
+
+### 6.2 API 工作流（`plan3\API_workflows\`）
+
+旧环境 `plan\API_workflows\` 是交付层，新环境原先只有 UI 图 + bat 里现拼的图，缺一份能直接
+`POST /prompt` 的静态 payload。补法是**在官方的 API 示例上改**，不是从 UI 图反解：
+
+| 项 | 内容 |
+|---|---|
+| 起点 | `custom_nodes\ComfyUI-HyperFlow-Flash\example_workflows\api\hyperflow_<family>_api.json`，快照进 `tools\stock_<family>_api.json` |
+| 为什么用它 | API 图的 input 名已经在文件里，不需要 `/object_info` 反查 widget 位置（UI→API 转换要靠 `node_schema.json`，那需要跑起服务）；官方那份本身就是「能提交的形状」 |
+| 生成 | `tools\make_workflow.py` 一次生成 UI + API 两套，API 落 `plan3\API_workflows\`，**不进 workflows 目录**（API 格式拖进界面必报 `TypeError: e is not iterable`） |
+
+三处改动与 UI 那份逐项一致，只是引用从 link id 换成 `[节点id, 输出槽]`：
+
+| # | 改动 | API 里的形态 |
+|---|---|---|
+| 1 | 换 8B heretic 编码器 | `CLIPLoader.inputs`：`clip_name` = `qwen3-vl-8b-heretic-1.3.0_fp8_e4m3fn.safetensors`，`type` = `boogu` |
+| 2 | 插 `ClipProjApply` | 新增节点（t2v 是 `15`，i2v `21`，flf2v/ref2v `22`），`MiniMaxH3*.clip` 从 `["2",0]` 改指它 |
+| 3 | 权重驻留策略 | `HyperFlowLoader.inputs.weights_in` = `disk`（可选输入，官方 API 图没写，默认 `auto`） |
+
+节点数：t2v 15 / i2v 16 / flf2v 17 / ref2v 17。i2v、flf2v、ref2v 各带 1–2 个 `LoadImage`（`20`/`21`），
+模板里是占位文件名（`first_frame.png` / `ref_image_1.png`），提交前要换成 `ComfyUI\input\` 下真实存在的文件。
+
+调参位置（全是 model input，没有 widget）：
+
+| 参数 | 位置 |
+|---|---|
+| 提示词 / 宽 / 高 / 帧数 | `5.inputs.{prompt,width,height,length}` |
+| 步数（仅 4/6/8） | `6.inputs.steps` |
+| 种子 | `8.inputs.noise_seed` |
+| 输出前缀 | `14.inputs.filename_prefix` |
+| 参考/首末帧图片 | `20`/`21` 号 `LoadImage.inputs.image` |
+
+自检：`& $py check_workflow.py ..\API_workflows\*.json`。`check_workflow.py` 现在按文件形状分流 ——
+有 `nodes` 走 UI 校验，没有就走 API 校验（`[id, slot]` 必须指向本文档内的节点、输入值只能是标量或引用、
+不允许 `widgets_values` 残留），两种都断言 ClipProj 接线、`boogu`、`weights_in=disk`、`euler`、`steps ∈ {4,6,8}`。
+实测输出（2026-11-12）：
+
+```
+api: 15 nodes, MiniMaxH3ImageToVideo, steps=6
+ok: references resolve, 8B + ClipProj wiring as expected (weights_in=disk)
+```
+
+**未实跑**：结构来自官方 API 示例，改动与已实测的 UI 图逐项一致，但没有提交过 `/prompt`。
+
+静态自检（不加载模型、不提交）：
+
+```powershell
+& $py "D:\localAI\ComfyUI-last\plan3\bat\check_graphs.py"
+# 期望最后一行：ok: every node reference and input name resolves
+```
+
+它把 4 个脚本的 8 种图都 build 一遍，对照官方 API 图检查节点类型与输入名 ——
+ComfyUI 对不认识的输入是**静默忽略**的，写错名字只会「出图但参数没生效」。
+
+---
+
+## 7. 实测
+
+### 7.1 三次成功运行的日志（t2v，`hyperflow_t2v_clipproj_8b.json`）
+
+| 时间 | 耗时 | 输出 |
+|---|---|---|
+| 21:43:06 | **281.70 s** | `t2v_00001_.mp4` |
+| 21:51:37 | **277.87 s** | `t2v_00002_.mp4` |
+| 22:02:01 | **293.65 s** | `t2v_00003_.mp4` |
+
+产物在 `D:\Comfy-Desktop\ComfyUI-Shared\output\hyperflow\`，`ffprobe`：
+
+```
+video: h264, 1344x768, 24/1, 124 frames
+audio: aac, 32000 Hz, 2 channels
+duration: 5.166688 s, size: 1.31 MB
+```
+
+### 7.2 单次 294 s 花在哪
+
+| 阶段 | 耗时 | 日志 |
+|---|---|---|
+| 文本编码（8B fp8） | ~10 s | `Requested to load BooguTEModel_` → DiT 加载开始 |
+| DiT 加载 | ~5 s | `HyperFlow: 18 factorized blocks, two-time=True, 6-step schedule` |
+| **采样 6 步** | **~230 s** | `6/6 [03:50<00:00, 38.4s/it]` |
+| VAE 解码 | ~31 s | 音频 576 MB staged、视频 4965 MB staged |
+| 合计 | **293.65 s** | `Prompt executed in 293.65 seconds` |
+
+关键日志（每次启动都一样，可作为「装对了」的判据）：
+
+```
+Using pytorch attention
+Using Comfy Kitchen attention            ← --use-ck-attention 生效
+Model storage policy: fast_disk=True     ← --fast-disk 生效
+Requested to load BooguTEModel_          ← type=boogu 走对了分支
+model_type FLOW_AV
+HyperFlow: 18 factorized blocks, two-time=True, 6-step schedule
+HyperFlow: transformer weights in disk (weights_in=auto)
+loaded completely; 15298.95 MB usable, 8936.71 MB loaded, full load: True
+```
+
+`weights_in=auto` 不是「猜」：它查 `comfy.storage.model_fast_disk([path])`，
+而那个函数在 `args.fast_disk` 为真时直接返回 True（`comfy/storage.py:104`），
+`disk` 走的是同一个判断（`storage.py:105`），所以上面那行日志现在会显示 `weights_in=disk`，
+行为不变。**没有 `--fast-disk` 就会退回内存模式**，32 GB 内存顶不住 9 GB DiT + 10 GB 编码器 + 采样激活。
+
+### 7.3 显存已在极限（用户实测结论，务必照做）
+
+**1344×768×124 帧 / 6 步这套参数已经把 24 GB 用满。**
+开跑前必须关掉所有占显存的程序（浏览器硬件加速、其它 ComfyUI 实例、游戏、录屏等）。
+否则 **OOM，或退化成显存↔系统内存的数据交换，单次生成从 ~5 分钟变成 ~16 分钟**。
+
+日志里能看出余地有多薄：
+
+| 项 | 值 |
+|---|---|
+| 总显存 | 24,560 MB |
+| 加载时可用 | 15,298.95 MB |
+| DiT 实际载入 | 8,936.71 MB |
+| 视频 VAE（解码时 staged） | 4,965 MB |
+| 音频 VAE（解码时 staged） | 576 MB |
+
+采样结束时 DiT 还占着，紧接着就要摊 5.5 GB 的 VAE —— 这一段是最挤的。
+aimdo 0.6.0 的「dynamic VRAM loading / Staged」在显存紧的时候会把权重推来推去，
+一旦要跨到系统内存，就是那 16 分钟。
+
+**因此**：
+
+- 不要再往上加分辨率或帧数（`1344×768×124` 是这台机器的实际上限，不是保守值）
+- 要更长就分段生成再拼（`bat\multisegment*` / `bat\scenes*`，见 §11）
+- 要更快就 `HyperFlowSigmas=4`（牺牲质量），别指望 `--fast-disk` 再挤时间
+- **要连跑第二次，先看 §7.5**：不是这套参数太极限的问题，是上一轮的权重还驻留在显存里
+
+### 7.4 试跑用的是长提示词
+
+三次实测用的提示词是官方示例那条**长提示词**，不是短关键词：
+
+```
+A street musician plays a weathered acoustic guitar on a cobblestone corner at golden hour.
+The camera slowly pushes in from a wide shot to a medium close-up as passers-by drift through
+the warm backlight. Soft strumming, distant chatter and a passing tram bell fill the soundtrack.
+```
+
+282 字符 / 47 词，比旧环境 `plan\` 的 t2v 基线（169 字符短提示词）长一倍以上。
+这点值得记一笔：**0.2.36 曾经在长提示词上出过 CK 回归**（图片「脏」、长提示词丢失），
+0.2.40 下这条长提示词没有复现——出片正常、音轨也在。
+
+### 7.5 连续第二次生成必爆：诊断与解法（2026-11-12 实测）
+
+**现象**：第一次成功（~294 s），第二次必在**装载文本编码器**时爆，日志停在
+`Requested to load BooguTEModel_` 之后，一个字都不再往下写，只能重启进程。
+
+**账目**（`/system_stats` 的 `vram_free`，实测）：
+
+| 时机 | vram_free |
+|---|---|
+| 冷启动 | 23.82 / 23.98 GB |
+| 跑完一次、未卸载 | **9.42 GB** |
+| `POST /free` 后 1 s | 16.98 GB |
+| 后 3 s | 22.46 GB |
+| 后 4.1 s | **23.52 GB** |
+
+跑完一次时 DiT 8.9 + 视频 VAE 5.0 + 音频 VAE 0.6 ≈ **14.5 GB 仍驻留**；
+第二次要装 10.59 GB 的编码器 → 需 25.0 GB，24 GB 装不下。
+**这不是泄漏，是上一轮没卸。** 冷启动 23.82 与卸载后 23.52 只差 0.30 GB（碎片 + context）。
+
+**解法**：每次点 Queue **之前**跑一次：
+
+```powershell
+& "C:\Comfy-Desktop\ComfyUI-Installs\ComfyUI\ComfyUI\.venv\Scripts\python.exe" -X utf8 `
+  "D:\localAI\ComfyUI-last\plan3\t2v\step0_free.py"
+```
+
+脚本 POST `/free`（`unload_models` + `free_memory`）后**轮询到 `total - 1.5 GB` 才返回**，
+达不到就报 `FAILED` 并以退出码 1 结束（批跑可以据此中止）。实测 4.1 s 拿回 14.1 GB，
+第二次生成只多付 **13 s** 重载（编码器 9.0 s + DiT 4.3 s），占 294 s 的 4.4%。
+
+**为什么图内卸载节点不够**（`ClipProjFree(scope="all models")` 挂图尾，实测仍然爆）：
+
+| | 图内 `ClipProjFree` | `/free`（worker 线程） |
+|---|---|---|
+| `unload_all_models()` | ✓ | ✓ |
+| `soft_empty_cache()` | ✓ `force=True` | ✓ |
+| `gc.collect()` | **✗** | ✓ （`main.py:432`） |
+| 清执行缓存 `e.reset()` | **✗** | ✓ （`main.py:425`） |
+
+`unload_all_models()` 只是把模型从 `current_loaded_models` 弹出并 `detach()`
+（`model_management.py:2171` → `free_memory(1e30)`）。只要还有 Python 引用
+（executor、`caches.outputs` 里的 latent / IMAGE），对象就活着，显存不还。
+图内节点执行时整个 prompt 还在跑、引用链完整，所以卸了个寂寞。
+
+**`--vram-headroom` 无效，而且注定无效**：它只传给
+`comfy_aimdo.control.init_devices`（`main.py:296`），管的是 **DynamicVRAM 的预算**；
+而 GGUF DiT 是 `disable_dynamic=True` 加载的（`loader_nodes.py:142`），压根不在这个账上。
+1 / 2 / 3 / 4 GB 都不用试。
+
+### 7.6 图缓存会让「第二次生成」的实验变假
+
+`execution.py:455` 在跑每个节点前先查 `caches.outputs.get(unique_id)`，命中就把上次的
+UI 输出重播一遍直接返回——**连 `SaveVideo` 都一样**。缓存 key 是输入签名
+（`caching.py:117`：`[class_type, is_changed]` + 全部祖先签名）。本图
+`noise_seed: 42` + `control_after_generate: "fixed"`，所以**同一提示词第二次是 0 秒、
+不写新文件、不碰显存**。
+
+- 判据：`Prompt executed in ≈ 280 s` 才是真跑；**`< 1 s` 就是缓存命中，这次实验作废**。
+- 想连跑同一提示词：改 seed，或把 `control_after_generate` 设成 `randomize`，
+  或先跑一次 `/free`（`e.reset()` 会新建整个 `CacheSet`，缓存一起清掉）。
+- 所以「昨天连跑三次都成功」和「第二次必爆」并不矛盾：三次的输入必然不同，
+  而爆的那次一定是改了提示词之后真正重跑的。
+
+---
+
+## 8. 踩坑
+
+### 8.1 GGUF 里的 tensor 名**不带** `model.diffusion_model.` 前缀
+
+`gguf_io.py` 里是 `state_dict[tensor.name.removeprefix(TENSOR_PREFIX)]`，
+而实测 647 个 tensor **一个都不带**前缀（`removeprefix` 对不匹配的串原样返回，所以正常）。
+别看到「前缀匹配 0/647」就以为文件坏了。
+
+### 8.2 文件没有 `general.architecture`
+
+这是 stable-diffusion.cpp 的布局。ComfyUI-GGUF 只接受它认识的 architecture，
+所以 HyperFlow 自己读 tensor、只借 ComfyUI-GGUF 的**反量化算子**（`GGUFBackend.find()`）。
+手工核对用 `tools\check_gguf.py`，期望输出含：
+
+```
+general.architecture: ABSENT (what HyperFlow expects)
+tensors: 647
+quant types: {'F32': 19, 'BF16': 296, 'Q6_K': 85, 'Q4_K': 247}
+blocks: 47  dense-qkv: 30  low-rank: 18
+  -> the loader should log 'HyperFlow: 18 factorized blocks'
+```
+
+### 8.3 「18 factorized blocks」是怎么数出来的
+
+47 个 block 里，30 个用融合的 `attn.qkv_proj`，18 个用低秩拆分的 `xxx.down` / `xxx.up`（1 个块两者都有）。
+`model_patch.py:27` 的 `PART` 正则要求一个模块同时有 `down.weight` 与 `up.weight` 两片叶子
+才折叠成 `LowRankLinear`，所以数出来正好 18 —— 和日志逐字对上，可以用来验证文件没被换过。
+
+### 8.4 `ComfyUI-GGUF-Loader`（分叉）会静默接管 `UnetLoaderGGUF`
+
+见 §5.5。症状是 `GGUFBackend.find()` 抛 `KeyError`，报错信息里完全没有「装错节点」的暗示。
+
+### 8.5 ClipProj 单卡别用 `ClipProjLoader`
+
+all-in-one 版本把编码器钉在卡上，在 24 GB 的单卡上白占 4–9 GB。用 `Load CLIP` + `ClipProj Apply`
+两段式，编码器用完即放。
+
+### 8.6 heretic（abliterated）编码器反而更差
+
+ClipProj 作者的实测：`-0.026` / `-0.034` cosine。别被「无审查版」吸引。
+
+### 8.7 清华 pypi 镜像对 `gguf` 返回 403
+
+换 `mirrors.aliyun.com/pypi/simple`（已在 `plan2` 验证过同样现象）。
+
+### 8.8 `curl.exe` 必须加 `--ssl-no-revoke`
+
+系统代理 `127.0.0.1:26561` 的 MITM 证书做不了吊销检查，不加会直接失败。
+另外 `raw.staticdn.net` 的 DNS 解析不出来，`raw.githubusercontent.com` 直连可用（带上面那个开关）。
+
+### 8.9 32B GGUF 会被「静默」认成 Mistral 3 24B
+
+见 §4.2。`detect_te_model` 不认识的权重不会报错，只会掉到宽度匹配的通用分支。
+
+### 8.10 别用图内节点代替 `/free`
+
+「跑完就卸」在图上做不到彻底：图内节点缺 `gc.collect()` 与 `e.reset()`，
+实测挂 `ClipProjFree(all models)` 后第二次仍然爆（见 §7.5）。
+卸模型的正确入口是 `/free`，且要在**提交之前**调，不是跑完之后。
+
+### 8.11 换机时先跑一次 `t2v\step0_free.py` 的冷启动基线
+
+冷启动 `vram_free` 应该是 `total - 0.2 GB` 左右（本机 23.82 / 23.98）。
+如果开机就只剩十几 GB，说明还有别的进程占着显存，先解决那个，再谈生成。
+
+---
+
+## 9. 提示词
+
+这条是新环境最容易踩的坑，而且**看起来像模型问题，其实是提示词问题**
+（用户已确认根因在提示词，不是模型也不是分辨率）。
+
+**完整书写规则不在本章**，在本机资产
+`bat\提示词模板\MiniMax-H3-提示词书写规则.md`（19 KB，依据官方两份写作指南 + ComfyUI 官方提示词页 +
+本机 `minimax_h3_prompt.py` 源码写成）。**写提示词前先看那份**，本章只讲三件新环境特有的事：
+CFG 1 没有负向分支、三种信封结构怎么选、以及本机尺寸/帧数的硬约束。
+
+`bat\提示词模板\` 里还有三个 `.txt` 示例模板（视频 / 静帧 / 照片）。它们和规则 md 有一处冲突：
+`提示词模板-视频.txt` 的「画质锁定」模块建议写 `Shot on ARRI Alexa 65, 35mm lens`，
+而规则 md §4 明确把摄影器材参数列为**要删的元信息**。以规则 md 为准。
+
+### 9.1 机制：CFG 1 没有负向分支
+
+`BasicGuider` 的 CFG 锁死为 1（§4.4，不可改），所以图里根本不存在负向条件。后果是：
+
+| 你以为 | 实际 |
+|---|---|
+| `no anime, avoid cartoon style` 会**压制**动漫 | 这些词照样被编码进条件向量，只是变成了「有动漫/CG 味」的强信号 |
+| 换个"无审查"编码器能修 | 不能。问题在条件向量里有那个词，不在编码器 |
+| 调高 CFG 让负向生效 | CFG 一动模型就崩（蒸馏模型只训过 1） |
+
+社区口径一致：guidance-distilled 模型上负向提示「不是效果弱，是**完全没有**作用」，
+剩下的是词本身的正向语义。所以**别写禁令，只写你要的东西**。
+
+### 9.2 三种信封结构，别混用
+
+| 场景 | 用哪种 | 形状 |
+|---|---|---|
+| t2v（无参考） | 三字段 | `integrated_multimodal_description` / `overall_soundscape` / `non_diegetic_music` |
+| i2v / flf2v（首末帧） | 指令行 + 三字段 | 先一段「`<Picture 1>` 对齐 0.00 秒」的指令行，空一行再写三字段（规则 md §1.1） |
+| ref2v（参考图/多素材改写） | 六段 或 三字段 | 六段见规则 md §6；官方 example 与 `bat\ref2va_8b_heretic\prompt.txt` 是两种现成写法 |
+
+三条硬格式，漏了会明显掉质量：
+
+- **三个字段一个都不能删**。没内容写 `N/A`，不要整段去掉（规则 md §4）。
+- 字段标签逐字照抄，顺序固定，不能调换。
+- 风格句放在 `[Shot 1]` **之后的第一句**，且是正面陈述：
+  `Photoreal 35mm film, natural skin texture, shallow depth of field.`
+  官方示例也是这么写的：`Photoreal 35mm action film, one continuous 10-second shot.`
+- 写实类提示词里不要出现 `anime`、`cartoon`、`CG`、`render`、`illustration` 任何一个词，
+  哪怕前面加了 `no` / `avoid` / `not`。
+- 提示词要**长**：本机三次实测用的是官方 282 字符长提示词（§7.4）；短关键词更容易丢细节。
+
+### 9.3 本机的尺寸与帧数（会静默取整）
+
+| 项 | 值 | 后果 |
+|---|---|---|
+| `length` | **124–481 帧**，向上吸附到 `17k+5` | 传 110/120 都变 124，传 200 变 209，**不报错不告警**（规则 md §4.1）。写分镜时间点前先确认实际帧数 |
+| 原生画布 | 短边 **768**（16:9 → 1344×768） | 这是原生尺寸；`bat\` 默认 `864×480` 是降档，能跑但画质掉 |
+| 本机上限 | 1344×768×124 | 再往上加就退化成数据交换（§7.3） |
+
+### 9.4 分辨率不是风格问题的原因
+
+曾怀疑 1344×768 触发「风格漂移」，已排除：旧环境同分辨率、同一模型出片正常。
+作为参考，社区反馈 H3 在 **768p 档依从性明显变差、352/416p 正常**（`MiniMaxAI/MiniMax-H3`
+discussion #65）。但这属于「提示词跟随度」，不是「画风被改写」，两者别混。
+
+本机的显存上限就是 1344×768×124（§7.3），所以这条只能记着，不能靠降分辨率解决。
+
+### 9.5 heretic 编码器不是风格开关
+
+ClipProj 作者实测 heretic / abliterated 编码器的语义分数**更差**（−0.026 / −0.034，§8.6）。
+本环境用 heretic 是用户选择，**不要指望它改变画风** —— 画风全在提示词里。
+
+---
+
+## 10. 复现步骤
+
+```powershell
+$py   = "C:\Comfy-Desktop\ComfyUI-Installs\ComfyUI\ComfyUI\.venv\Scripts\python.exe"
+$cn   = "C:\Comfy-Desktop\ComfyUI-Installs\ComfyUI\ComfyUI\custom_nodes"
+$wf   = "C:\Comfy-Desktop\ComfyUI-Installs\ComfyUI\ComfyUI\user\default\workflows"
+$here = "D:\localAI\ComfyUI-last\plan3\tools"
+
+# 1. 节点
+git clone --depth 1 https://v4.gh-proxy.org/https://github.com/city96/ComfyUI-GGUF "$cn\ComfyUI-GGUF"
+git clone --depth 1 https://v4.gh-proxy.org/https://github.com/Video-Rebirth/ComfyUI-HyperFlow-Flash "$cn\ComfyUI-HyperFlow-Flash"
+#    ClipProj 从旧环境整目录复制（或自行 git clone）
+
+# 2. 依赖
+& $py -m pip install gguf -i https://mirrors.aliyun.com/pypi/simple/
+
+# 3. 模型（见 §5.3 的落点表）
+
+# 4. 生成 4 个工作流（UI + API 共 8 个文件）+ 三项自检
+& $py "$here\make_workflow.py"
+Get-ChildItem "$wf\hyperflow_*_clipproj_8b.json" | ForEach-Object { & $py "$here\check_workflow.py" $_.FullName }
+& $py "$here\check_workflow.py" "D:\localAI\ComfyUI-last\plan3\API_workflows\*.json"   # API payload（§6.2）
+& $py "$here\check_gguf.py"
+& $py "D:\localAI\ComfyUI-last\plan3\bat\check_graphs.py"   # bat 脚本的 8 种 API 图
+
+# 5. Desktop 里加启动参数：--fast-disk --use-ck-attention
+# 6. 关掉所有占显存的程序
+# 7. 每次点 Queue 之前先卸一次（连续生成必须做，见 §7.5）
+& $py "D:\localAI\ComfyUI-last\plan3\t2v\step0_free.py"
+# 8. 跑工作流（提示词怎么写见 §9）
+```
+
+---
+
+## 11. 未验证 / 后续
+
+| 项 | 状态 |
+|---|---|
+| `hyperflow_i2v` 续段工作流 | 图**已生成**（`hyperflow_i2v_clipproj_8b.json`），`bat\multisegment` / `scenes` 也做了末帧续接；但脚本**未实跑**，段间拼接处的音轨连续性没验过 |
+| `ref2va`（参考图锁角色） | 权重已下载（`minimax_h3_ref2va_hyperflow_flash_14b-Q4_K_M.gguf`，9,220,352,512 字节 = 远端 `totalLength`），工作流也已生成；**未实跑** |
+| `bat\` 四个生成脚本 | 静态校验通过（`check_graphs.py`），`--help` 正常，但**一次都没实跑**。首次跑建议：单段 5 s → 两段拼接 → ref2v 两张图 124 帧 6 步 |
+| `API_workflows\` 四条 payload（§6.2） | **静态校验通过、未提交过 `/prompt`**。结构照官方 API 示例改，三处改动与已实测的 UI 图逐项一致；首次跑建议 t2v 单条、124 帧、6 步 |
+| 8B + ClipProj 的语义保真度 | **未逐项评估**。这条组合在两个环境都没有先例（旧环境是 4B 投影喂原版 H3）。若出现「画面跟得上提示词但语义散」或「语音糊」，第一个怀疑对象是投影矩阵 |
+| 语音质量 | ClipProj README 提示：cosine 0.90 够视觉语义但**不够音素**，非英语更差；v3.1 就是为此改的，但中文对白仍建议实测 |
+| 32B 的可能性 | 只有 `fp8` safetensors（约 32 GB）一条路，需内存加到 64 GB。改 `comfy/sd.py` 加 GGUF 分支是下策（升级即丢） |
+| `--use-ck-attention` 的加速幅度 | 未做 A/B。旧环境结论是生视频几乎无质量差别、快一个数量级，本次未复测 |
+| `preview_watch` 内核补丁（预览 + step0 卸载 DiT） | **未移植**。旧环境 `plan\bat\preview_watch\frame_preview_kernel.patch`（3 文件：`latent_preview.py` / `execution.py` / `comfy_extras/nodes_minimax_h3.py`）的三个锚点在 0.44.2 上**逐项吻合**，理论上可手工移植；没做的原因是它的「step0 卸载 DiT」是预览解码的副作用，命中条件是**动态 DiT**，而本机 DiT 是 `disable_dynamic=True` 的 GGUF（见 §7.5），换一条分支；且中途 `vae.decode()` 要在满显存上临时摊 5 GB。需要实时预览时再单独评估 |
