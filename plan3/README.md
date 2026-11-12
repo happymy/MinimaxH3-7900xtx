@@ -3,6 +3,13 @@
 > **本目录是仓库唯一现行线**（2026-11-12 起）。根 `README.md` 是索引；
 > `plan\` 与 `plan2\` 属旧 portable 环境，**已废弃**，只留作历史对照。
 >
+> ### ✅ 强烈建议：就按本目录这套部署
+>
+> Comfy Desktop + HyperFlow H3 Flash GGUF + Qwen3-VL-8B heretic + `mmh3-8b-ClipProj-v3.1-mlp`。
+> UI 工作流与 API 工作流**都已实测跑通**（API 四条于 2026-11-12 手动提交 `/prompt` 验证）。
+> 旧 portable（`plan\`）那套原生 H3 20 步方案：同 5 s 片 480P ≈ 570 s，本方案 720P ≈ 280 s，
+> 不要再混搭旧参数、旧模型清单或旧工作流。
+>
 > `plan\` 是旧 portable 环境的 MiniMax H3 资产，`plan2\` 是 Qwen-Image 2.1，
 > **`plan3\` 只放新装的 Comfy Desktop 环境**（ComfyUI 0.45.2 / ROCm 7.14）这一条线。
 > 三个目录平级，互不覆盖。仓库侧是 `D:\localAI\ComfyUI-last\plan3\` 的副本；
@@ -385,8 +392,8 @@ $body | Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8188/prompt -Conten
 静态自检：`& $py check_workflow.py ..\API_workflows\*.json` —— 查 `[id, slot]` 引用是否都落在本文档内、
 有无 UI 残留字段（`widgets_values`），并断言上面的三处改动、`euler`、`steps ∈ {4,6,8}`。
 
-**未实跑**：API payload 的结构源自官方 API 示例，改动与已实跑的 UI 图逐项一致，但没有提交过 `/prompt`
-（UI 图的三次实测走的是网页）。首次跑建议先 t2v 一条、124 帧、6 步。
+**已实测（2026-11-12，用户手动提交 `/prompt`）**：四条 payload 均通过实际运行验证，不再只靠静态校验。
+静态自检仍建议每次改完先跑一遍：`& $py check_workflow.py ..\API_workflows\*.json`。
 
 ---
 

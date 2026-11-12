@@ -1,9 +1,16 @@
 # HyperFlow H3 Flash（GGUF）Comfy Desktop 部署总结
 
 > 落地目录：`D:\localAI\ComfyUI-last\plan3\`
-> 新环境：`C:\Comfy-Desktop\`（ComfyUI 0.44.2 / ROCm 7.14 / RX 7900 XTX）
+> 新环境：`C:\Comfy-Desktop\`（ComfyUI 0.45.2 / ROCm 7.14 / RX 7900 XTX）
 > 完成日期：2026-11-11（连续生成问题 2026-11-12 定位并解决）
-> 状态：**已完成**。单次 3 连测通过（277.87 / 281.70 / 293.65 s）；连续第二次爆显存已定位为「上一轮没卸」，解法见 §7.5，实测通过
+> 状态：**已完成**。单次 3 连测通过（277.87 / 281.70 / 293.65 s）；连续第二次爆显存已定位为「上一轮没卸」，解法见 §7.5，实测通过；API 工作流 2026-11-12 实跑通过（§6.2）
+>
+> ### ✅ 强烈建议：就按本文这一套部署
+>
+> **换机 / 重装 / 想复现，一律照本文（`plan3\`）做** —— Comfy Desktop + HyperFlow H3 Flash GGUF +
+> Qwen3-VL-8B heretic + `mmh3-8b-ClipProj-v3.1-mlp`。旧 portable 环境（`plan\`）那套原生 H3 20 步方案
+> **已废弃**：同为 5 s 片，旧方案 480P ≈ 570 s，本方案 720P ≈ 280 s，画质与速度都是两倍差距。
+> 不要再回头拼旧参数、旧模型清单或旧工作流。
 
 ---
 
@@ -30,10 +37,10 @@
 | 工作流 | **4 条 UI**（`hyperflow_{t2v,i2v,flf2v,ref2v}_clipproj_8b.json`）+ **4 条 API payload**（`plan3\API_workflows\…_api.json`，§6.2），均带音轨 |
 | 实测 | t2v 3 次成功，`Prompt executed in` 277.87 / 281.70 / 293.65 s |
 | 成片参数 | 1344×768 @ 24 fps，124 帧，5.167 s，H.264 + AAC 32 kHz 立体声 |
-| 启动参数 | `--fast-disk --use-ck-attention` |
+| 启动参数 | `--use-ck-attention --disable-smart-memory --cache-none --fp16-intermediates`（`--fast-disk` 本机自动 True） |
 | 显存 | **已在极限**（§7.3）——开跑前必须清空其它占显存的程序 |
-| 连续生成 | **每次点 Queue 前必须先 `/free`**（§7.5）：跑完一次会留 14.5 GB 驻留，第二次装编码器时必爆。4 s 拿回来，只多付 13 s 重载 |
-| 静态校验 | 4 个图各自双向一致（link/node：t2v 18/16、i2v 19/17、flf2v 20/18、ref2v 21/18）；`bat\` 的 8 种 API 图节点名与输入名全解析（`check_graphs.py`）；GGUF 结构与 loader 预期逐项对上 |
+| 连续生成 | **每次提交前必须先 `/free`**（§7.5）：跑完一次会留 14.5 GB 驻留，第二次装编码器时必爆。4 s 拿回来，只多付 13 s 重载 |
+| 静态校验 + 实跑 | 4 个 UI 图各自双向一致（link/node：t2v 18/16、i2v 19/17、flf2v 20/18、ref2v 21/18）；4 条 API payload 引用全解析并**实跑通过**（§6.2）；`bat\` 的 8 种 API 图节点名与输入名全解析（`check_graphs.py`）；GGUF 结构与 loader 预期逐项对上 |
 | 提示词 | 按 `bat\提示词模板\MiniMax-H3-提示词书写规则.md` 写；**不能写禁令**（§9）：CFG 锁死 1、无负向分支，`no anime` 里的词照样进条件向量 |
 | 遗留 | 8B 投影的语义保真度未逐项评估；`bat\` 脚本尚未实跑（§11） |
 
@@ -357,7 +364,7 @@ api: 15 nodes, MiniMaxH3ImageToVideo, steps=6
 ok: references resolve, 8B + ClipProj wiring as expected (weights_in=disk)
 ```
 
-**未实跑**：结构来自官方 API 示例，改动与已实测的 UI 图逐项一致，但没有提交过 `/prompt`。
+**已实测（2026-11-12，用户手动提交 `/prompt`）**：四条 payload 全部实际跑通，不只是静态校验。
 
 静态自检（不加载模型、不提交）：
 
@@ -700,7 +707,7 @@ Get-ChildItem "$wf\hyperflow_*_clipproj_8b.json" | ForEach-Object { & $py "$here
 | `hyperflow_i2v` 续段工作流 | 图**已生成**（`hyperflow_i2v_clipproj_8b.json`），`bat\multisegment` / `scenes` 也做了末帧续接；但脚本**未实跑**，段间拼接处的音轨连续性没验过 |
 | `ref2va`（参考图锁角色） | 权重已下载（`minimax_h3_ref2va_hyperflow_flash_14b-Q4_K_M.gguf`，9,220,352,512 字节 = 远端 `totalLength`），工作流也已生成；**未实跑** |
 | `bat\` 四个生成脚本 | 静态校验通过（`check_graphs.py`），`--help` 正常，但**一次都没实跑**。首次跑建议：单段 5 s → 两段拼接 → ref2v 两张图 124 帧 6 步 |
-| `API_workflows\` 四条 payload（§6.2） | **静态校验通过、未提交过 `/prompt`**。结构照官方 API 示例改，三处改动与已实测的 UI 图逐项一致；首次跑建议 t2v 单条、124 帧、6 步 |
+| `API_workflows\` 四条 payload（§6.2） | **已手动实测通过（2026-11-12）**：四条都提交过 `/prompt`。结构照官方 API 示例改，三处改动与已实测的 UI 图逐项一致 |
 | 8B + ClipProj 的语义保真度 | **未逐项评估**。这条组合在两个环境都没有先例（旧环境是 4B 投影喂原版 H3）。若出现「画面跟得上提示词但语义散」或「语音糊」，第一个怀疑对象是投影矩阵 |
 | 语音质量 | ClipProj README 提示：cosine 0.90 够视觉语义但**不够音素**，非英语更差；v3.1 就是为此改的，但中文对白仍建议实测 |
 | 32B 的可能性 | 只有 `fp8` safetensors（约 32 GB）一条路，需内存加到 64 GB。改 `comfy/sd.py` 加 GGUF 分支是下策（升级即丢） |

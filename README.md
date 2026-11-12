@@ -5,6 +5,12 @@
 > **现状（2026-11-12 起重写）**：整条线已从「旧 portable 环境」换成 **Comfy Desktop 新环境 +
 > HyperFlow H3 Flash（14B 蒸馏加速版，GGUF）+ Qwen3-VL-8B + ClipProj**。
 > 现行文档只有 **`plan3/`**；`plan/`、`plan2/` 是旧 portable 环境的资产，**已废弃**，只留作历史对照。
+>
+> ### ✅ 强烈建议：换机 / 重装 / 复现，一律照 `plan3/` 的部署方式
+>
+> 本文与 `plan3/HyperFlow-H3-Flash-GGUF-部署总结.md` 描述的是同一套、且**已实测跑通**的方案
+> （UI 工作流三次连测 + API 工作流四条实跑）。旧 portable 那套原生 H3 20 步方案不要再用：
+> 同为 5 s 片，旧方案 480P ≈ 570 s，新方案 720P ≈ 280 s。照 `plan3/` 走，别混搭旧参数。
 
 | 目录 | 内容 | 状态 |
 |---|---|---|
@@ -70,7 +76,7 @@ $py = "C:\Comfy-Desktop\ComfyUI-Installs\ComfyUI\ComfyUI\.venv\Scripts\python.ex
 | `hyperflow_flf2v_clipproj_8b.json` | `fl2va` | 首帧 + 末帧 |
 | `hyperflow_ref2v_clipproj_8b.json` | `ref2va` | 参考图 ×1–9 |
 
-**四条 API 工作流**（`/prompt` 直连，`plan3/API_workflows/`）：同样的四个 family，文件名
+**四条 API 工作流**（`/prompt` 直连，`plan3/API_workflows/`，**2026-11-12 已实跑通过**）：同样的四个 family，文件名
 `hyperflow_<family>_clipproj_8b_api.json`，提交前同样要先跑 `step0_free.py`。
 
 ---
