@@ -400,6 +400,7 @@ $body | Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8188/prompt -Conten
 ## 4. `bat\` 脚本（API 直连，不经网页）
 
 从 `plan\bat` 移植；`build_graph()` 已换成 HyperFlow 链，分段 / 末帧续接 / ffmpeg 拼接逻辑原样复用。
+**四个生成脚本 2026-11-12 已实跑通过**。
 
 | 目录 | 入口 `.bat` | 作用 |
 |---|---|---|

@@ -42,7 +42,7 @@
 | 连续生成 | **每次提交前必须先 `/free`**（§7.5）：跑完一次会留 14.5 GB 驻留，第二次装编码器时必爆。4 s 拿回来，只多付 13 s 重载 |
 | 静态校验 + 实跑 | 4 个 UI 图各自双向一致（link/node：t2v 18/16、i2v 19/17、flf2v 20/18、ref2v 21/18）；4 条 API payload 引用全解析并**实跑通过**（§6.2）；`bat\` 的 8 种 API 图节点名与输入名全解析（`check_graphs.py`）；GGUF 结构与 loader 预期逐项对上 |
 | 提示词 | 按 `bat\提示词模板\MiniMax-H3-提示词书写规则.md` 写；**不能写禁令**（§9）：CFG 锁死 1、无负向分支，`no anime` 里的词照样进条件向量 |
-| 遗留 | 8B 投影的语义保真度未逐项评估；`bat\` 脚本尚未实跑（§11） |
+| 遗留 | 8B 投影的语义保真度未逐项评估 |
 
 ---
 
@@ -704,9 +704,9 @@ Get-ChildItem "$wf\hyperflow_*_clipproj_8b.json" | ForEach-Object { & $py "$here
 
 | 项 | 状态 |
 |---|---|
-| `hyperflow_i2v` 续段工作流 | 图**已生成**（`hyperflow_i2v_clipproj_8b.json`），`bat\multisegment` / `scenes` 也做了末帧续接；但脚本**未实跑**，段间拼接处的音轨连续性没验过 |
-| `ref2va`（参考图锁角色） | 权重已下载（`minimax_h3_ref2va_hyperflow_flash_14b-Q4_K_M.gguf`，9,220,352,512 字节 = 远端 `totalLength`），工作流也已生成；**未实跑** |
-| `bat\` 四个生成脚本 | 静态校验通过（`check_graphs.py`），`--help` 正常，但**一次都没实跑**。首次跑建议：单段 5 s → 两段拼接 → ref2v 两张图 124 帧 6 步 |
+| `hyperflow_i2v` 续段工作流 | 图**已生成**（`hyperflow_i2v_clipproj_8b.json`），`bat\multisegment` / `scenes` 的末帧续接**已实跑通过**（2026-11-12）；段间拼接处的音轨连续性未逐项评估 |
+| `ref2va`（参考图锁角色） | 权重已下载（`minimax_h3_ref2va_hyperflow_flash_14b-Q4_K_M.gguf`，9,220,352,512 字节 = 远端 `totalLength`），工作流已生成，**已实跑通过**（2026-11-12） |
+| `bat\` 四个生成脚本 | **已实跑通过**（2026-11-12）；静态校验 `check_graphs.py` 与 `--help` 也正常 |
 | `API_workflows\` 四条 payload（§6.2） | **已手动实测通过（2026-11-12）**：四条都提交过 `/prompt`。结构照官方 API 示例改，三处改动与已实测的 UI 图逐项一致 |
 | 8B + ClipProj 的语义保真度 | **未逐项评估**。这条组合在两个环境都没有先例（旧环境是 4B 投影喂原版 H3）。若出现「画面跟得上提示词但语义散」或「语音糊」，第一个怀疑对象是投影矩阵 |
 | 语音质量 | ClipProj README 提示：cosine 0.90 够视觉语义但**不够音素**，非英语更差；v3.1 就是为此改的，但中文对白仍建议实测 |
