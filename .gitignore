@@ -5,5 +5,9 @@ plan/TEMP/
 __pycache__/
 *.pyc
 
+# plan3 的参考图 / 测试素材（6 个 PNG，内容有重复，不入库；实机路径见 plan3/README.md §1）
+plan3/bat/*/img/
+plan3/bat/测试素材/
+
 # Playwright MCP 工具产物（识图流程的页面快照 / console 日志）
 .playwright-mcp/
