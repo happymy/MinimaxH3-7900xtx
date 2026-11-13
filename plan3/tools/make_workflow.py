@@ -6,13 +6,15 @@ Each stock graph (``stock_<family>.json``, a snapshot of
 gfx1100 (RX 7900 XTX), so this rewrites the encoder path to Qwen3-VL-8B Heretic
 plus a calibrated projection matrix, leaving every sampling parameter untouched.
 
-Two outputs per family, same three changes each:
+Output per family:
 
     hyperflow_<family>_clipproj_8b.json      UI graph, into %WORKFLOWS%
-    API_workflows/hyperflow_<family>_clipproj_8b_api.json
-                                             /prompt payload, into ../API_workflows
 
-    python make_workflow.py              # all four, both formats
+The API payloads in ../API_workflows are derived from these UI graphs by the
+offline conversion documented in ../README.md §8, not by this script — it only
+writes into the ComfyUI workflows folder.
+
+    python make_workflow.py              # all four
     python make_workflow.py ref2v        # just one
 """
 
@@ -23,7 +25,6 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 WORKFLOWS = (r"C:\Comfy-Desktop\ComfyUI-Installs\ComfyUI\ComfyUI"
              r"\user\default\workflows")
-API_OUT = os.path.join(os.path.dirname(HERE), "API_workflows")
 
 FAMILIES = ("t2v", "i2v", "flf2v", "ref2v")
 
@@ -155,40 +156,6 @@ def build(family):
              loader["widgets_values"][1]))
 
 
-def build_api(family):
-    """Same three changes, applied to the official API payload.
-
-    The API snapshot is already the flat {id: {class_type, inputs}} form, so the
-    clip link is a ["2", 0] reference rather than a link id: inserting the
-    projection means pointing the MiniMaxH3 node at a new node id.
-    """
-    src = os.path.join(HERE, "stock_%s_api.json" % family)
-    dst = os.path.join(API_OUT, "hyperflow_%s_clipproj_8b_api.json" % family)
-    d = json.load(open(src, encoding="utf-8"))
-
-    clip_loader = next(n for n in d.values() if n["class_type"] == "CLIPLoader")
-    loader = next(n for n in d.values() if n["class_type"] == "HyperFlowLoader")
-    target = next(n for n in d.values()
-                  if n["class_type"].startswith("MiniMaxH3"))
-
-    loader["inputs"]["weights_in"] = WEIGHTS_IN
-    clip_loader["inputs"].update({"clip_name": CLIP_NAME, "type": CLIP_TYPE})
-
-    new_id = str(max(int(k) for k in d) + 1)
-    old_ref = target["inputs"]["clip"]
-    d[new_id] = {"class_type": "ClipProjApply",
-                 "inputs": {"clip": old_ref, "projection": MATRIX}}
-    target["inputs"]["clip"] = [new_id, 0]
-
-    os.makedirs(API_OUT, exist_ok=True)
-    with open(dst, "w", encoding="utf-8") as f:
-        json.dump(d, f, ensure_ascii=False, indent=2)
-
-    print("%-6s %-40s clip=%s -> ClipProjApply(%s) -> %s.clip  weights_in=%s"
-          % (family, os.path.basename(dst), old_ref[0], new_id,
-             target["class_type"], loader["inputs"]["weights_in"]))
-
-
 def main():
     wanted = sys.argv[1:] or list(FAMILIES)
     unknown = [f for f in wanted if f not in FAMILIES]
@@ -197,7 +164,6 @@ def main():
                          % (unknown, list(FAMILIES)))
     for family in wanted:
         build(family)
-        build_api(family)
 
 
 main()

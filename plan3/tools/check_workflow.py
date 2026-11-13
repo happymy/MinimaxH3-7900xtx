@@ -12,7 +12,9 @@ gets the reference checks instead: every ``[id, slot]`` must name a node in the
 same file, every value must be a primitive or such a reference, and no UI
 leftovers are allowed.
 
-When the file is the 8B + ClipProj graph, the wiring is asserted as well.
+When the file carries the HyperFlow 8B path (``HyperFlowLoader``), its wiring is
+asserted as well. The qwen / TTS payloads in ``API_workflows`` have nothing to
+assert beyond the references, so they skip that block.
 """
 
 import json
@@ -28,6 +30,12 @@ def fail(problems):
     for x in problems:
         print(" -", x)
     raise SystemExit(1)
+
+
+def by_type(d, name):
+    """(id, node) of the single node of that class_type, or (None, None)."""
+    hits = [(k, n) for k, n in d.items() if n["class_type"] == name]
+    return hits[0] if len(hits) == 1 else (None, None)
 
 
 def check_api(d):
@@ -46,43 +54,62 @@ def check_api(d):
                 problems.append("%s.%s: dict value, the API wants a flat input"
                                 % (nid, key))
 
-    clip_loader = next(n for n in d.values() if n["class_type"] == "CLIPLoader")
-    loader = next(n for n in d.values() if n["class_type"] == "HyperFlowLoader")
-    target = next(n for n in d.values() if n["class_type"].startswith("MiniMaxH3"))
-    cp_id, cp = next((k, n) for k, n in d.items()
-                     if n["class_type"] == "ClipProjApply")
+    types = sorted({n["class_type"] for n in d.values()})
+    print("api: %d nodes, %s" % (len(d), ", ".join(types[:6])
+                                 + (", ..." if len(types) > 6 else "")))
+    if problems:
+        fail(problems)
 
-    if clip_loader["inputs"]["clip_name"] != CLIP_NAME:
-        problems.append("CLIPLoader still points at %s"
-                        % clip_loader["inputs"]["clip_name"])
-    if clip_loader["inputs"]["type"] != CLIP_TYPE:
-        problems.append("CLIPLoader type is %s, expected %s"
-                        % (clip_loader["inputs"]["type"], CLIP_TYPE))
+    if "HyperFlowLoader" not in types:
+        print("ok: references resolve (not an H3 graph, no ClipProj assertions)")
+        return
+
+    clip_loader = next((n for n in d.values() if n["class_type"] == "CLIPLoader"), None)
+    loader = next((n for n in d.values() if n["class_type"] == "HyperFlowLoader"), None)
+    target = next((n for n in d.values()
+                   if n["class_type"].startswith("MiniMaxH3")), None)
+    cp_id, cp = by_type(d, "ClipProjApply")
+    for label, node in (("CLIPLoader", clip_loader), ("MiniMaxH3*", target),
+                        ("ClipProjApply", cp)):
+        if node is None:
+            problems.append("%s missing from the 8B graph" % label)
+
+    if clip_loader is not None:
+        if clip_loader["inputs"].get("clip_name") != CLIP_NAME:
+            problems.append("CLIPLoader still points at %s"
+                            % clip_loader["inputs"].get("clip_name"))
+        if clip_loader["inputs"].get("type") != CLIP_TYPE:
+            problems.append("CLIPLoader type is %r, expected %s"
+                            % (clip_loader["inputs"].get("type"), CLIP_TYPE))
     if loader["inputs"].get("weights_in") != "disk":
         problems.append("HyperFlowLoader weights_in is %r, expected 'disk'"
                         % loader["inputs"].get("weights_in"))
 
-    clip_ref = cp["inputs"]["clip"]
-    if d.get(clip_ref[0]) is not clip_loader:
-        problems.append("ClipProjApply.clip does not come from CLIPLoader")
-    if cp["inputs"]["projection"] != MATRIX:
-        problems.append("ClipProjApply projection is %r" % cp["inputs"]["projection"])
+    if cp is not None:
+        clip_ref = cp["inputs"].get("clip")
+        if not (isinstance(clip_ref, list) and d.get(clip_ref[0]) is clip_loader):
+            problems.append("ClipProjApply.clip does not come from CLIPLoader")
+        if cp["inputs"].get("projection") != MATRIX:
+            problems.append("ClipProjApply projection is %r"
+                            % cp["inputs"].get("projection"))
+        consumers = sorted(k for k, n in d.items()
+                           if n["inputs"].get("clip") == [cp_id, 0])
+        if len(consumers) != 1 or d[consumers[0]] is not target:
+            problems.append("ClipProjApply output feeds %s, expected only the "
+                            "MiniMaxH3 node" % consumers)
 
-    consumers = [k for k, n in d.items() if n["inputs"].get("clip") == [cp_id, 0]]
-    if consumers != [next(k for k, n in d.items() if n is target)]:
-        problems.append("ClipProjApply output feeds %s, expected only the "
-                        "MiniMaxH3 node" % consumers)
+    sampler = next((n for n in d.values() if n["class_type"] == "KSamplerSelect"), None)
+    sigmas = next((n for n in d.values() if n["class_type"] == "HyperFlowSigmas"), None)
+    if sampler is None or sigmas is None:
+        problems.append("KSamplerSelect / HyperFlowSigmas missing")
+    else:
+        if sampler["inputs"].get("sampler_name") != "euler":
+            problems.append("sampler is %r" % sampler["inputs"].get("sampler_name"))
+        if sigmas["inputs"].get("steps") not in (4, 6, 8):
+            problems.append("HyperFlowSigmas steps=%r, only 4/6/8 exist"
+                            % sigmas["inputs"].get("steps"))
+        print("steps=%d" % sigmas["inputs"]["steps"])
 
-    sampler = next(n for n in d.values() if n["class_type"] == "KSamplerSelect")
-    sigmas = next(n for n in d.values() if n["class_type"] == "HyperFlowSigmas")
-    if sampler["inputs"]["sampler_name"] != "euler":
-        problems.append("sampler is %s" % sampler["inputs"]["sampler_name"])
-    if sigmas["inputs"]["steps"] not in (4, 6, 8):
-        problems.append("HyperFlowSigmas steps=%r, only 4/6/8 exist"
-                        % sigmas["inputs"]["steps"])
-
-    print("api: %d nodes, %s, steps=%d"
-          % (len(d), target["class_type"], sigmas["inputs"]["steps"]))
     if problems:
         fail(problems)
     print("ok: references resolve, 8B + ClipProj wiring as expected "
@@ -139,7 +166,8 @@ def check_ui(d):
 
         assert cp["widgets_values"] == [MATRIX], cp["widgets_values"]
 
-        loader = next(n for n in d["nodes"] if n["type"] == "HyperFlowLoader")
+        loader = next((n for n in d["nodes"] if n["type"] == "HyperFlowLoader"), None)
+        assert loader is not None, "ClipProjApply without HyperFlowLoader"
         assert loader["widgets_values"][1] == "disk", loader["widgets_values"]
 
         print("ok: 8B + ClipProj wiring as expected (%s, weights_in=%s)"
