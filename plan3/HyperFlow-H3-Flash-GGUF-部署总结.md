@@ -3,7 +3,7 @@
 > 落地目录：`D:\localAI\ComfyUI-last\plan3\`
 > 新环境：`C:\Comfy-Desktop\`（ComfyUI 0.45.2 / ROCm 7.14 / RX 7900 XTX）
 > 完成日期：2026-11-11（连续生成问题 2026-11-12 定位并解决）
-> 状态：**已完成**。单次 3 连测通过（277.87 / 281.70 / 293.65 s）；连续第二次爆显存已定位为「上一轮没卸」，解法见 §7.5，实测通过；API 工作流 2026-11-12 实跑通过（§6.2）
+> 状态：**已完成**。单次 3 连测通过（277.87 / 281.70 / 293.65 s）；连续第二次爆显存已定位为「上一轮没卸」，解法见 §7.5，实测通过；API 工作流 11 条全部实跑通过（§6.2）
 >
 > ### ✅ 强烈建议：就按本文这一套部署
 >
@@ -36,12 +36,12 @@
 |---|---|
 | 工作流 | **4 条 UI**（`hyperflow_{t2v,i2v,flf2v,ref2v}_clipproj_8b.json`）+ **11 条 API payload**（`plan3\API_workflows\`：4 条 H3 同名 + 6 条 qwen + 1 条 TTS，§6.2），均带音轨 |
 | 应用侧 | API 工作流**已完成 [infinite-creation](https://github.com/SwotAtmk/infinite-creation) 适配**（§6.2；`plan3\README.md` §8.5） |
-| 实测 | t2v 3 次成功，`Prompt executed in` 277.87 / 281.70 / 293.65 s |
+| 实测 | t2v 3 次成功，`Prompt executed in` 277.87 / 281.70 / 293.65 s；11 条 API payload 全部实跑通过 |
 | 成片参数 | 1344×768 @ 24 fps，124 帧，5.167 s，H.264 + AAC 32 kHz 立体声 |
 | 启动参数 | `--use-ck-attention --disable-smart-memory --cache-none --fp16-intermediates`（`--fast-disk` 本机自动 True） |
 | 显存 | **已在极限**（§7.3）——开跑前必须清空其它占显存的程序 |
 | 连续生成 | **每次提交前必须先 `/free`**（§7.5）：跑完一次会留 14.5 GB 驻留，第二次装编码器时必爆。4 s 拿回来，只多付 13 s 重载 |
-| 静态校验 + 实跑 | 4 个 UI 图各自双向一致（link/node：t2v 18/16、i2v 19/17、flf2v 20/18、ref2v 21/18）；4 条 API payload 引用全解析并**实跑通过**（§6.2）；`bat\` 的 8 种 API 图节点名与输入名全解析（`check_graphs.py`）；GGUF 结构与 loader 预期逐项对上 |
+| 静态校验 + 实跑 | 4 个 UI 图各自双向一致（link/node：t2v 18/16、i2v 19/17、flf2v 20/18、ref2v 21/18）；**11 条 API payload 引用全解析并全部实跑通过**（§6.2）；`bat\` 的 8 种 API 图节点名与输入名全解析（`check_graphs.py`）；GGUF 结构与 loader 预期逐项对上 |
 | 提示词 | 按 `bat\提示词模板\MiniMax-H3-提示词书写规则.md` 写；**不能写禁令**（§9）：CFG 锁死 1、无负向分支，`no anime` 里的词照样进条件向量 |
 | 遗留 | 8B 投影的语义保真度未逐项评估 |
 
@@ -374,7 +374,8 @@ api: 4 nodes, PreviewAudio, Qwen3TTSModelLoader, Qwen3TTSVoiceDesign, SaveAudio
 ok: references resolve (not an H3 graph, no ClipProj assertions)
 ```
 
-**已实测（2026-11-12，手动提交 `/prompt`）**：H3 四条 payload 全部实际跑通，不只是静态校验。
+**已实测（手动提交 `/prompt`）**：11 条 payload **全部实际跑通**，不只是静态校验 —— H3 四条、
+qwen-image 六条（t2i / image_edit / background_removal × Q4/Q8）、TTS 一条。
 
 **适配已完成**：11 条 payload 已随 [SwotAtmk/infinite-creation](https://github.com/SwotAtmk/infinite-creation)
 落地（`src\infinite-creation\workflows\`），`workflow-specs.js` 的 sourceFile / roles 与
@@ -721,7 +722,7 @@ Get-ChildItem "$wf\hyperflow_*_clipproj_8b.json" | ForEach-Object { & $py "$here
 | `hyperflow_i2v` 续段工作流 | 图**已生成**（`hyperflow_i2v_clipproj_8b.json`），`bat\multisegment` / `scenes` 的末帧续接**已实跑通过**（2026-11-12）；段间拼接处的音轨连续性未逐项评估 |
 | `ref2va`（参考图锁角色） | 权重已下载（`minimax_h3_ref2va_hyperflow_flash_14b-Q4_K_M.gguf`，9,220,352,512 字节 = 远端 `totalLength`），工作流已生成，**已实跑通过**（2026-11-12） |
 | `bat\` 四个生成脚本 | **已实跑通过**（2026-11-12）；静态校验 `check_graphs.py` 与 `--help` 也正常 |
-| `API_workflows\` 11 条 payload（§6.2） | **已手动实测通过（2026-11-12）**：H3 四条都提交过 `/prompt`；**已完成 [infinite-creation](https://github.com/SwotAtmk/infinite-creation) 适配**（`plan3\README.md` §8.5）。qwen / TTS 六条 + 一条只做静态引用校验，未在应用侧逐条实跑 |
+| `API_workflows\` 11 条 payload（§6.2） | **全部已实测通过**：H3 四条 + qwen-image 六条 + TTS 一条都提交过 `/prompt` 并出片/出音频；**已完成 [infinite-creation](https://github.com/SwotAtmk/infinite-creation) 适配**（`plan3\README.md` §8.5） |
 | 8B + ClipProj 的语义保真度 | **未逐项评估**。这条组合在两个环境都没有先例（旧环境是 4B 投影喂原版 H3）。若出现「画面跟得上提示词但语义散」或「语音糊」，第一个怀疑对象是投影矩阵 |
 | 语音质量 | ClipProj README 提示：cosine 0.90 够视觉语义但**不够音素**，非英语更差；v3.1 就是为此改的，但中文对白仍建议实测 |
 | 32B 的可能性 | 只有 `fp8` safetensors（约 32 GB）一条路，需内存加到 64 GB。改 `comfy/sd.py` 加 GGUF 分支是下策（升级即丢） |

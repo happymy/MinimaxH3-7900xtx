@@ -9,7 +9,7 @@
 > ### ✅ 强烈建议：换机 / 重装 / 复现，一律照 `plan3/` 的部署方式
 >
 > 本文与 `plan3/HyperFlow-H3-Flash-GGUF-部署总结.md` 描述的是同一套、且**已实测跑通**的方案
-> （UI 工作流三次连测 + H3 API 工作流四条实跑）。旧 portable 那套原生 H3 20 步方案不要再用：
+> （UI 工作流三次连测 + API 工作流 11 条实跑）。旧 portable 那套原生 H3 20 步方案不要再用：
 > 同为 5 s 片，旧方案 480P ≈ 570 s，新方案 720P ≈ 280 s。照 `plan3/` 走，别混搭旧参数。
 >
 > ### ✅ API 工作流已完成 infinite-creation 适配
@@ -83,7 +83,7 @@ $py = "C:\Comfy-Desktop\ComfyUI-Installs\ComfyUI\ComfyUI\.venv\Scripts\python.ex
 | `hyperflow_flf2v_clipproj_8b.json` | `fl2va` | 首帧 + 末帧 |
 | `hyperflow_ref2v_clipproj_8b.json` | `ref2va` | 参考图 ×1–9 |
 
-**API 工作流**（`/prompt` 直连，`plan3/API_workflows/`，共 11 条，**H3 四条 2026-11-12 已实跑通过**）：
+**API 工作流**（`/prompt` 直连，`plan3/API_workflows/`，共 11 条，**全部实跑通过**）：
 4 条 H3 与 UI 图同名（`hyperflow_<family>_clipproj_8b.json`），6 条 qwen-image 带 `_api` 后缀，
 1 条 TTS（`qwen3_tts_voice_design_ui.json`）。提交前同样要先跑 `step0_free.py`；
 这批 payload 已在 infinite-creation 侧完成适配（见上）。

@@ -6,7 +6,7 @@
 > ### ✅ 强烈建议：就按本目录这套部署
 >
 > Comfy Desktop + HyperFlow H3 Flash GGUF + Qwen3-VL-8B heretic + `mmh3-8b-ClipProj-v3.1-mlp`。
-> UI 工作流与 API 工作流**都已实测跑通**（API 四条于 2026-11-12 手动提交 `/prompt` 验证），
+> UI 工作流与 API 工作流**都已实测跑通**（API 工作流 11 条全部实跑验证），
 > 且 API 工作流**已完成 [infinite-creation](https://github.com/SwotAtmk/infinite-creation) 适配**（§8）。
 > 旧 portable（`plan\`）那套原生 H3 20 步方案：同 5 s 片 480P ≈ 570 s，本方案 720P ≈ 280 s，
 > 不要再混搭旧参数、旧模型清单或旧工作流。
@@ -399,8 +399,10 @@ $body | Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8188/prompt -Conten
 有无 UI 残留字段（`widgets_values`）；带 `HyperFlowLoader` 的四条再断言上面的三处改动、`euler`、
 `steps ∈ {4,6,8}`，qwen / TTS 只查引用。
 
-**已实测（2026-11-12，手动提交 `/prompt`）**：H3 四条 payload 均通过实际运行验证，不再只靠静态校验。
-**已完成后 [infinite-creation](https://github.com/SwotAtmk/infinite-creation) 的适配**：11 条 payload 落进
+**已实测（手动提交 `/prompt`）**：11 条 payload **全部实际跑通**，不是只靠静态校验 ——
+H3 四条（t2v / i2v / flf2v / ref2v）、qwen-image 六条（t2i / image_edit / background_removal × Q4/Q8）、
+TTS 一条。
+**已完成 [infinite-creation](https://github.com/SwotAtmk/infinite-creation) 的适配**：11 条 payload 落进
 `src\infinite-creation\workflows\`，`lib\core\workflow-specs.js` 的 sourceFile / roles、
 `lib\core\workflow-runner.js` 的 `mapRoleValue` / `bindMedia` 同步改完，`npm test` 253 项通过 —— 细节见 §8.5。
 每次改完仍先跑一遍静态自检。
@@ -500,7 +502,7 @@ ComfyUI 自己的 `object_info`（`server.py:843` 的 `node_info`），不手写
 
 **状态：适配已完成。** 11 条 payload 已随 [SwotAtmk/infinite-creation](https://github.com/SwotAtmk/infinite-creation)
 落地（`src\infinite-creation\workflows\`），`workflow-specs.js` / `workflow-runner.js` 同步改完，`npm test` 253 项通过；
-改动清单见 §8.5。H3 四条另在 2026-11-12 手动提交 `/prompt` 实跑通过。
+改动清单见 §8.5。11 条 payload 也都提交过 `/prompt` 实跑通过。
 
 ### 8.1 转换规则
 
