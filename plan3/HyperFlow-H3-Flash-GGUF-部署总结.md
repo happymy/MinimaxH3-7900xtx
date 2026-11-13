@@ -35,7 +35,7 @@
 | 项 | 结果 |
 |---|---|
 | 工作流 | **4 条 UI**（`hyperflow_{t2v,i2v,flf2v,ref2v}_clipproj_8b.json`）+ **11 条 API payload**（`plan3\API_workflows\`：4 条 H3 同名 + 6 条 qwen + 1 条 TTS，§6.2），均带音轨 |
-| 应用侧 | API 工作流**已完成 [infinite-creation](https://github.com/SwotAtmk/infinite-creation) 适配**（§6.2、§8.5） |
+| 应用侧 | API 工作流**已完成 [infinite-creation](https://github.com/SwotAtmk/infinite-creation) 适配**（§6.2；`plan3\README.md` §8.5） |
 | 实测 | t2v 3 次成功，`Prompt executed in` 277.87 / 281.70 / 293.65 s |
 | 成片参数 | 1344×768 @ 24 fps，124 帧，5.167 s，H.264 + AAC 32 kHz 立体声 |
 | 启动参数 | `--use-ck-attention --disable-smart-memory --cache-none --fp16-intermediates`（`--fast-disk` 本机自动 True） |
@@ -348,7 +348,7 @@ H3 四条相对官方 32B 模板的三处改动与 UI 图逐项一致，只是�
 节点数：t2v 15 / i2v 16 / flf2v 17 / ref2v 18。i2v、flf2v、ref2v 各带 1–2 个 `LoadImage`（`20`/`21`），
 模板里是占位文件名（`first_frame.png` / `ref_image_1.png`），提交前要换成 `ComfyUI\input\` 下真实存在的文件。
 ref2v 另有转换后补的 **`115` `ResolutionSelector`**（宽高改由它出，供应用的 `resolution` / `aspect_ratio` 使用，
-§8.3），另外三条没有。
+`plan3\README.md` §8.3），另外三条没有。
 
 调参位置（全是 model input，没有 widget）：
 
@@ -378,7 +378,7 @@ ok: references resolve (not an H3 graph, no ClipProj assertions)
 
 **适配已完成**：11 条 payload 已随 [SwotAtmk/infinite-creation](https://github.com/SwotAtmk/infinite-creation)
 落地（`src\infinite-creation\workflows\`），`workflow-specs.js` 的 sourceFile / roles 与
-`workflow-runner.js` 的 `mapRoleValue` / `bindMedia` 同步改完，`npm test` 253 项通过（§8.5）。
+`workflow-runner.js` 的 `mapRoleValue` / `bindMedia` 同步改完，`npm test` 253 项通过（`plan3\README.md` §8.5）。
 
 静态自检（不加载模型、不提交）：
 
@@ -721,7 +721,7 @@ Get-ChildItem "$wf\hyperflow_*_clipproj_8b.json" | ForEach-Object { & $py "$here
 | `hyperflow_i2v` 续段工作流 | 图**已生成**（`hyperflow_i2v_clipproj_8b.json`），`bat\multisegment` / `scenes` 的末帧续接**已实跑通过**（2026-11-12）；段间拼接处的音轨连续性未逐项评估 |
 | `ref2va`（参考图锁角色） | 权重已下载（`minimax_h3_ref2va_hyperflow_flash_14b-Q4_K_M.gguf`，9,220,352,512 字节 = 远端 `totalLength`），工作流已生成，**已实跑通过**（2026-11-12） |
 | `bat\` 四个生成脚本 | **已实跑通过**（2026-11-12）；静态校验 `check_graphs.py` 与 `--help` 也正常 |
-| `API_workflows\` 11 条 payload（§6.2） | **已手动实测通过（2026-11-12）**：H3 四条都提交过 `/prompt`；**已完成 [infinite-creation](https://github.com/SwotAtmk/infinite-creation) 适配**（§8.5）。qwen / TTS 六条 + 一条只做静态引用校验，未在应用侧逐条实跑 |
+| `API_workflows\` 11 条 payload（§6.2） | **已手动实测通过（2026-11-12）**：H3 四条都提交过 `/prompt`；**已完成 [infinite-creation](https://github.com/SwotAtmk/infinite-creation) 适配**（`plan3\README.md` §8.5）。qwen / TTS 六条 + 一条只做静态引用校验，未在应用侧逐条实跑 |
 | 8B + ClipProj 的语义保真度 | **未逐项评估**。这条组合在两个环境都没有先例（旧环境是 4B 投影喂原版 H3）。若出现「画面跟得上提示词但语义散」或「语音糊」，第一个怀疑对象是投影矩阵 |
 | 语音质量 | ClipProj README 提示：cosine 0.90 够视觉语义但**不够音素**，非英语更差；v3.1 就是为此改的，但中文对白仍建议实测 |
 | 32B 的可能性 | 只有 `fp8` safetensors（约 32 GB）一条路，需内存加到 64 GB。改 `comfy/sd.py` 加 GGUF 分支是下策（升级即丢） |
