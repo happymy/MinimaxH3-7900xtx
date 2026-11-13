@@ -9,15 +9,22 @@
 > ### ✅ 强烈建议：换机 / 重装 / 复现，一律照 `plan3/` 的部署方式
 >
 > 本文与 `plan3/HyperFlow-H3-Flash-GGUF-部署总结.md` 描述的是同一套、且**已实测跑通**的方案
-> （UI 工作流三次连测 + API 工作流四条实跑）。旧 portable 那套原生 H3 20 步方案不要再用：
+> （UI 工作流三次连测 + H3 API 工作流四条实跑）。旧 portable 那套原生 H3 20 步方案不要再用：
 > 同为 5 s 片，旧方案 480P ≈ 570 s，新方案 720P ≈ 280 s。照 `plan3/` 走，别混搭旧参数。
+>
+> ### ✅ API 工作流已完成 infinite-creation 适配
+>
+> `plan3/API_workflows/` 的 11 条 `/prompt` payload（4 条 H3 + 6 条 qwen-image + 1 条 TTS）已落进
+> [SwotAtmk/infinite-creation](https://github.com/SwotAtmk/infinite-creation) 的
+> `src/infinite-creation/workflows/`，`workflow-specs.js` / `workflow-runner.js` 同步改完，`npm test` 253 项通过。
+> 转换规则、节点编号与改动清单见 `plan3/README.md` §8。
 
 | 目录 | 内容 | 状态 |
 |---|---|---|
-| **`plan3/`** | **现行**。新环境（ComfyUI 0.45.2 / ROCm 7.14）的 H3 全部资产：部署总结、工作流工具、API 工作流、bat 脚本族、提示词规则 | ✅ 唯一现行 |
+| **`plan3/`** | **现行**。新环境（ComfyUI 0.45.2 / ROCm 7.14）的 H3 全部资产：部署总结、工作流工具、11 条 API 工作流、UI 工作流镜像（`molbal_workflows/`）、bat 脚本族、提示词规则 | ✅ 唯一现行 |
 | `plan2/` | Qwen-Image 2.1 生图线（与 H3 无关，同机另一条线） | 旧环境，已废弃 |
 | `plan/` | 旧 portable 环境（0.39.x，原生 H3 20 步）全部资产；根目录旧版 README 已归档到 `plan/归档/README-portable-0.39-旧版.md` | 旧环境，已废弃 |
-| `src/` | infinite-creation 等下游接入配置 | 未变 |
+| `src/` | infinite-creation 等下游接入配置（`config.json` 的 workflow key 未变，换的是 specs 里的 sourceFile） | 已随新工作流对齐 |
 
 ---
 
@@ -76,8 +83,10 @@ $py = "C:\Comfy-Desktop\ComfyUI-Installs\ComfyUI\ComfyUI\.venv\Scripts\python.ex
 | `hyperflow_flf2v_clipproj_8b.json` | `fl2va` | 首帧 + 末帧 |
 | `hyperflow_ref2v_clipproj_8b.json` | `ref2va` | 参考图 ×1–9 |
 
-**四条 API 工作流**（`/prompt` 直连，`plan3/API_workflows/`，**2026-11-12 已实跑通过**）：同样的四个 family，文件名
-`hyperflow_<family>_clipproj_8b_api.json`，提交前同样要先跑 `step0_free.py`。
+**API 工作流**（`/prompt` 直连，`plan3/API_workflows/`，共 11 条，**H3 四条 2026-11-12 已实跑通过**）：
+4 条 H3 与 UI 图同名（`hyperflow_<family>_clipproj_8b.json`），6 条 qwen-image 带 `_api` 后缀，
+1 条 TTS（`qwen3_tts_voice_design_ui.json`）。提交前同样要先跑 `step0_free.py`；
+这批 payload 已在 infinite-creation 侧完成适配（见上）。
 
 ---
 
@@ -97,8 +106,8 @@ $py = "C:\Comfy-Desktop\ComfyUI-Installs\ComfyUI\ComfyUI\.venv\Scripts\python.ex
 照 `plan3/HyperFlow-H3-Flash-GGUF-部署总结.md`：
 
 - §5 安装清单（3 个自定义节点、`gguf` pip 包、6 个模型文件的落点）
-- §6 工作流改了什么（`plan3/tools/make_workflow.py` 一次生成 UI + API 两套）
-- §10 复现步骤（含三条静态自检）
+- §6 工作流改了什么（`plan3/tools/make_workflow.py` 生成 4 个 UI 图；API payload 走 `plan3/README.md` §8 的离线转换）
+- §10 复现步骤（含四项静态自检）
 - 硬编码路径清单见 `plan3/README.md` §5
 
 ---

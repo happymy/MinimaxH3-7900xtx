@@ -6,7 +6,8 @@
 > ### ✅ 强烈建议：就按本目录这套部署
 >
 > Comfy Desktop + HyperFlow H3 Flash GGUF + Qwen3-VL-8B heretic + `mmh3-8b-ClipProj-v3.1-mlp`。
-> UI 工作流与 API 工作流**都已实测跑通**（API 四条于 2026-11-12 手动提交 `/prompt` 验证）。
+> UI 工作流与 API 工作流**都已实测跑通**（API 四条于 2026-11-12 手动提交 `/prompt` 验证），
+> 且 API 工作流**已完成 [infinite-creation](https://github.com/SwotAtmk/infinite-creation) 适配**（§8）。
 > 旧 portable（`plan\`）那套原生 H3 20 步方案：同 5 s 片 480P ≈ 570 s，本方案 720P ≈ 280 s，
 > 不要再混搭旧参数、旧模型清单或旧工作流。
 >
@@ -23,8 +24,9 @@
 | 文件 / 目录 | 内容 |
 |---|---|
 | `HyperFlow-H3-Flash-GGUF-部署总结.md` | **主文档**。目标 / 结论 / 环境 / 选型取舍 / 安装清单 / 工作流改动 / 实测与显存预算（含 §7.5 连续生成、§7.6 图缓存）/ 踩坑 / 提示词 / 复现 / 未验证 |
-| `tools\` | 工作流生成与自检（9 个文件：4 份 UI 快照 + 4 份 API 快照 + 3 个脚本） |
-| `API_workflows\` | **API 格式工作流**（`/prompt` 直连的 payload），由 `tools\make_workflow.py` 生成，4 个 family |
+| `tools\` | 工作流生成与自检（7 个文件：4 份 UI 快照 + 3 个脚本）。**只生成 UI 图**，API payload 走 §8 的离线转换 |
+| `API_workflows\` | **11 个 `/prompt` payload**（API 格式）：4 条 H3（与 UI 图同名）+ 6 条 qwen-image（`_api` 后缀）+ 1 条 TTS。**已完成 [infinite-creation](https://github.com/SwotAtmk/infinite-creation) 适配**，转换规则与落地细节见 §8 |
+| `molbal_workflows\` | `user\default\workflows\` 的**完整镜像**（11 份 UI 格式原图：4 H3 + 6 qwen + 1 TTS），内容与 ComfyUI 里逐字节一致，换机时可直接拖回界面；也是 §8 转换的输入 |
 | `bat\` | API 直连的分段生成脚本（7 个脚本目录，从 `plan\bat` 移植/原样复制）+ `check_graphs.py` 静态自检 + `提示词模板\`（写提示词前先看）+ `测试素材\` |
 | `t2v\` | 运行时工具。`step0_free.py`，**每次点 Queue 之前跑一次** |
 
@@ -314,19 +316,18 @@ tokens = (length / 4) × (width / 32) × (height / 32)
 | 文件 | 作用 |
 |---|---|
 | `stock_{t2v,i2v,flf2v,ref2v}.json` | 官方 `example_workflows/hyperflow_<family>.json` 的 **UI 格式**快照，UI 工作流的起点。上游插件更新后要重新复制 |
-| `stock_{t2v,i2v,flf2v,ref2v}_api.json` | 同一批官方示例的 **API 格式**快照（`example_workflows/api/`），API 工作流的起点 |
-| `make_workflow.py` | 从快照生成两套 `hyperflow_<family>_clipproj_8b[_api].json`：换 8B heretic 编码器、插 `ClipProjApply`、`weights_in=disk`、改写图内说明（API 那份是同样的三处改动，只是没有 MarkdownNote） |
-| `check_workflow.py` | 静态校验，支持一次传多个文件：UI 图查 link 两端；API 图查 `[id, slot]` 引用是否都指向本文档内的节点、有无 UI 残留字段。两种都断言 ClipProj 接线、`boogu`、`weights_in=disk`，以及 `euler` / `steps ∈ {4,6,8}` |
+| `make_workflow.py` | 从快照生成 4 个 `hyperflow_<family>_clipproj_8b.json`（写进 ComfyUI 的 `workflows\`）：换 8B heretic 编码器、插 `ClipProjApply`、`weights_in=disk`、改写图内说明。**只出 UI 图**；API payload 由 §8 的离线转换从 UI 图导出，不走这个脚本 |
+| `check_workflow.py` | 静态校验，支持一次传多个文件、按文件形状分流：UI 图查 link 两端；API 图查 `[id, slot]` 引用是否都指向本文档内的节点、有无 UI 残留字段（`widgets_values`）。带 `HyperFlowLoader` 的图再断言 ClipProj 接线、`boogu`、`weights_in=disk`、`euler` / `steps ∈ {4,6,8}`；qwen / TTS 的 payload 只查引用 |
 | `check_gguf.py` | 核对 GGUF 结构是否符合 `gguf_io.py` 的预期（无 `general.architecture`、`hyperflow_*` 三件套、低秩块计数） |
 
 全用**新环境的 venv** 跑：
 
 ```powershell
 $py = "C:\Comfy-Desktop\ComfyUI-Installs\ComfyUI\ComfyUI\.venv\Scripts\python.exe"
-& $py make_workflow.py                # 4 个 family，UI + API 共 8 个文件
+& $py make_workflow.py                # 4 个 family 的 UI 图
 & $py make_workflow.py ref2v          # 只生成一个
 & $py check_workflow.py "C:\Comfy-Desktop\ComfyUI-Installs\ComfyUI\ComfyUI\user\default\workflows\hyperflow_i2v_clipproj_8b.json"
-& $py check_workflow.py ..\API_workflows\*.json
+& $py check_workflow.py ..\API_workflows\*.json      # 11 条 payload 全查
 & $py check_gguf.py
 ```
 
@@ -357,32 +358,37 @@ GGUF 路线只吃图片参考，不吃视频/音频参考（那些要走官方 I
 
 ### 3.1 API 工作流（`API_workflows\`）
 
-同四个 family 的 **`/prompt` payload**，由 `tools\make_workflow.py` 从
-`tools\stock_<family>_api.json`（官方 `example_workflows/api/` 快照）生成，改动与 UI 那份完全相同：
+**11 条 `/prompt` payload**，全部由 §8 的离线转换从 `user\default\workflows\` 的界面工作流导出
+（输入名与 widget 顺序取自本机 `object_info`，不手写）。H3 四条与 UI 图**同名**（没有 `_api` 后缀），
+qwen 六条因与 `src\infinite-creation\workflows\` 已有文件撞名而带 `_api` 后缀，TTS 那条是 `_ui`。
+
+H3 四条相对官方 32B 模板的三处改动（与 UI 图逐项一致，引用形式是 `["节点id", 输出槽]`）：
 
 | # | 改动 |
 |---|---|
 | 1 | `CLIPLoader`：`qwen3vl_32b_minimax_h3_nvfp4_awq` / `minimax` → `qwen3-vl-8b-heretic-1.3.0_fp8_e4m3fn` / **`boogu`** |
-| 2 | 新增 `ClipProjApply`（`mmh3-8b-ClipProj-v3.1-mlp`），把 `MiniMaxH3*.clip` 从 `["2",0]` 改指向它 |
+| 2 | 新增 `ClipProjApply`（`mmh3-8b-ClipProj-v3.1-mlp`），`MiniMaxH3*.clip` 从 `["2",0]` 改指向它 |
 | 3 | `HyperFlowLoader.weights_in` = **`disk`** |
 
-| 文件 | 节点 | 额外输入 |
-|---|---|---|
-| `hyperflow_t2v_clipproj_8b_api.json` | 15 | — |
-| `hyperflow_i2v_clipproj_8b_api.json` | 16 | `LoadImage`(`20`) → `first_frame` |
-| `hyperflow_flf2v_clipproj_8b_api.json` | 17 | `LoadImage`(`20`,`21`) → `first_frame` / `last_frame` |
-| `hyperflow_ref2v_clipproj_8b_api.json` | 17 | `LoadImage`(`20`,`21`) → `ref_images.ref_image_0/1` |
+| 文件 | 节点 | `ClipProjApply` | 额外输入 |
+|---|---|---|---|
+| `hyperflow_t2v_clipproj_8b.json` | 15 | `16` | — |
+| `hyperflow_i2v_clipproj_8b.json` | 16 | `22` | `LoadImage`(`20`) → `first_frame` |
+| `hyperflow_flf2v_clipproj_8b.json` | 17 | `23` | `LoadImage`(`20`,`21`) → `first_frame` / `last_frame` |
+| `hyperflow_ref2v_clipproj_8b.json` | 18 | `23` | `LoadImage`(`20`,`21`) → `ref_images.ref_image_0/1`；另含转换后补的 **`115` `ResolutionSelector`**（§8.3） |
+| `qwen3_tts_voice_design_ui.json` | 4 | — | TTS：`2` 是 text/voice_description/seed，`3` 是 `SaveAudio` |
+| `qwen_image_2_1_{t2i,image_edit,background_removal}{,_-Q8_0}_gguf_api.json` | 16 / 21 / 13 | — | qwen-image，编号与旧版一致（§8.3） |
 
 提交（**同样要先跑 `t2v\step0_free.py`**）：
 
 ```powershell
-$body = '{"prompt": ' + (Get-Content -Raw -Encoding utf8 "API_workflows\hyperflow_t2v_clipproj_8b_api.json") + '}'
+$body = '{"prompt": ' + (Get-Content -Raw -Encoding utf8 "API_workflows\hyperflow_t2v_clipproj_8b.json") + '}'
 $body | Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8188/prompt -ContentType application/json
 ```
 
 改参数直接改 JSON 里的值（都是 model 的 input，不是 widget）：
 
-- 提示词 / 尺寸 / 帧数：`5.inputs.prompt` / `width` / `height` / `length`
+- 提示词 / 尺寸 / 帧数：`5.inputs.prompt` / `width` / `height` / `length`（ref2v 的宽高是 `["115",0/1]`）
 - 步数：`6.inputs.steps`（**只取 4 / 6 / 8**）
 - 种子：`8.inputs.noise_seed`
 - 输出前缀：`14.inputs.filename_prefix`
@@ -390,10 +396,14 @@ $body | Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8188/prompt -Conten
   （模板里写的是 `first_frame.png` / `ref_image_1.png` 等占位名，必须换成实际存在的文件）
 
 静态自检：`& $py check_workflow.py ..\API_workflows\*.json` —— 查 `[id, slot]` 引用是否都落在本文档内、
-有无 UI 残留字段（`widgets_values`），并断言上面的三处改动、`euler`、`steps ∈ {4,6,8}`。
+有无 UI 残留字段（`widgets_values`）；带 `HyperFlowLoader` 的四条再断言上面的三处改动、`euler`、
+`steps ∈ {4,6,8}`，qwen / TTS 只查引用。
 
-**已实测（2026-11-12，用户手动提交 `/prompt`）**：四条 payload 均通过实际运行验证，不再只靠静态校验。
-静态自检仍建议每次改完先跑一遍：`& $py check_workflow.py ..\API_workflows\*.json`。
+**已实测（2026-11-12，手动提交 `/prompt`）**：H3 四条 payload 均通过实际运行验证，不再只靠静态校验。
+**已完成后 [infinite-creation](https://github.com/SwotAtmk/infinite-creation) 的适配**：11 条 payload 落进
+`src\infinite-creation\workflows\`，`lib\core\workflow-specs.js` 的 sourceFile / roles、
+`lib\core\workflow-runner.js` 的 `mapRoleValue` / `bindMedia` 同步改完，`npm test` 253 项通过 —— 细节见 §8.5。
+每次改完仍先跑一遍静态自检。
 
 ---
 
@@ -436,7 +446,6 @@ ComfyUI 对不认识的输入是**静默忽略**的，写错名字只会「出�
 | 文件 | 常量 | 现值 |
 |---|---|---|
 | `tools\make_workflow.py` | `WORKFLOWS` | `…\ComfyUI-Installs\ComfyUI\ComfyUI\user\default\workflows` |
-| `tools\make_workflow.py` | `API_OUT` | `<plan3>\API_workflows`（按脚本自身位置推导，换目录不用改） |
 | `tools\check_gguf.py` | `DEFAULT` | `…\ComfyUI-Shared\models\diffusion_models\…-Q4_K_M.gguf` |
 | `tools\check_workflow.py` | — | 路径由命令行传入 |
 | `bat\check_graphs.py` | `API` | `…\custom_nodes\ComfyUI-HyperFlow-Flash\example_workflows\api` |
@@ -454,8 +463,8 @@ ComfyUI 对不认识的输入是**静默忽略**的，写错名字只会「出�
 
 | 类别 | 位置 |
 |---|---|
-| 工作流 | `C:\Comfy-Desktop\ComfyUI-Installs\ComfyUI\ComfyUI\user\default\workflows\hyperflow_<family>_clipproj_8b.json` |
-| API 工作流 | `plan3\API_workflows\hyperflow_<family>_clipproj_8b_api.json`（不在 workflows 目录，否则会混进 UI 列表；直接 POST `/prompt`） |
+| 工作流 | `C:\Comfy-Desktop\ComfyUI-Installs\ComfyUI\ComfyUI\user\default\workflows\hyperflow_<family>_clipproj_8b.json`（`molbal_workflows\` 是它的完整镜像） |
+| API 工作流 | `plan3\API_workflows\*.json`（不在 workflows 目录，否则会混进 UI 列表；直接 POST `/prompt`）。落到应用侧后在 `src\infinite-creation\workflows\` |
 | 模型 | `C:\Comfy-Desktop\ComfyUI-Shared\models\{diffusion_models,text_encoders,vae}\` |
 | 投影矩阵 | `C:\Comfy-Desktop\ComfyUI-Installs\ComfyUI\ComfyUI\models\clip_projections\` |
 | 节点 | `C:\Comfy-Desktop\ComfyUI-Installs\ComfyUI\ComfyUI\custom_nodes\{ComfyUI-GGUF,ComfyUI-HyperFlow-Flash,ComfyUI-ClipProj}\` |
@@ -480,3 +489,80 @@ ComfyUI 对不认识的输入是**静默忽略**的，写错名字只会「出�
 5. **提示词按 `bat\提示词模板\MiniMax-H3-提示词书写规则.md` 写**：三字段缺一不可（没内容写 `N/A`），
    风格句放 `[Shot 1]` 之后第一句。**不要写禁令** —— CFG 锁死 1，没有负向分支，
    `no anime` / `avoid …` 里的词会照样进入条件向量，把风格拉向它。详见主文档 §9。
+
+---
+
+## 8. 界面工作流 → API 工作流（`API_workflows\`）
+
+来源是 `user\default\workflows\` 的界面格式（`nodes`/`links`/`widgets_values`），输出是 infinite-creation 直接
+POST `/prompt` 的 API 格式（`id -> {class_type, inputs}`）。**离线转换，不用浏览器导出**：输入名与顺序全部取自本机
+ComfyUI 自己的 `object_info`（`server.py:843` 的 `node_info`），不手写猜测。
+
+**状态：适配已完成。** 11 条 payload 已随 [SwotAtmk/infinite-creation](https://github.com/SwotAtmk/infinite-creation)
+落地（`src\infinite-creation\workflows\`），`workflow-specs.js` / `workflow-runner.js` 同步改完，`npm test` 253 项通过；
+改动清单见 §8.5。H3 四条另在 2026-11-12 手动提交 `/prompt` 实跑通过。
+
+### 8.1 转换规则
+
+| 情况 | 处理 |
+|---|---|
+| 子图（`definitions.subgraphs`） | 展开，节点 id 加 `实例id:` 前缀；`-10` 输入节点接实例的 `widgets_values`，`-20` 输出节点映射回上层 |
+| 子图实例的 `widgets_values` | 只与「widget 类型」的子图输入按序对齐（`images.image_1` 这类 socket 不占位）；**被连线接走的输入仍然占位** |
+| 动态组合（`COMFY_DYNAMICCOMBO_V3`） | 先取值决定分支，再展开该分支声明的子 widget（如 `sampling_mode.on` → `.temperature/.top_k/...`、`format` → `format.bit_depth`） |
+| Autogrow（`COMFY_AUTOGROW_V3`） | 按源文件里的 `images.image_0` / `images.image0` 原样输出（两种编号风格都来自不同节点） |
+| seed 类 widget | 紧跟其后的 `fixed/randomize/increment/decrement` 是前端状态，不写进 API |
+| `LoadImage.upload` | 纯前端 widget，丢弃 |
+| `ImageCompare.compare_view` | 前端不落盘（`socketless`），补 `"auto"` |
+| 旧工作流缺了后来新增的 widget | 回落到 `object_info` 的 `default` |
+
+### 8.2 文件名映射
+
+**文件名不做适配：沿用 ComfyUI 源工作流原名**，只有与 `src\infinite-creation\workflows\` 已有文件撞名的 6 个 qwen
+加 `_api` 后缀（旧版继续可用，新图并存）。
+
+| 源（界面） | 目标（本目录） |
+|---|---|
+| `hyperflow_{t2v,i2v,flf2v,ref2v}_clipproj_8b.json` | 同名 |
+| `qwen3_tts_voice_design_ui.json` | 同名 |
+| `qwen_image_2_1_{t2i,image_edit}{,_-Q8_0}_gguf.json` | 同名 + `_api` |
+| `qwen_image_2_1_background_removal{,_-Q8_0}_gguf.json` | 同名 + `_api` |
+
+### 8.3 新工作流的节点编号（`lib/core/workflow-specs.js` 的 roles 要用这套）
+
+- `hyperflow_ref2v_clipproj_8b.json`（18 节点，`HyperFlowLoader` 版）：prompt / length / width / height
+  都在 **5**（`MiniMaxH3ReferenceToVideo`），seed 在 **8**（`RandomNoise.noise_seed`），filename_prefix 在 **14**
+  （`SaveVideo`），参考图/音/视频走 **5** 的 autogrow（`ref_images.ref_image_N` / `ref_audios.ref_audio_N` /
+  `ref_videos.ref_video_N`），现成 loader 是 20 / 21。
+  **`115`（`ResolutionSelector`）是转换后补上去的**：HyperFlow 模板把宽高写死在 5 上，而应用的 `resolution` /
+  `aspect_ratio` 参数（`VIDEO_RESOLUTION_MP` 表）只认这个节点。补法与旧 CCTech 图同款（`megapixels` +
+  `aspect_ratio` + `multiple: 32` → 5 的宽高），重新生成文件后要再跑一次 `patch_h3_resolution.py`。
+  时长由 `mapRoleValue` 的 `frames` 标志换算（24 fps、17n+5 对齐，与旧图 134 的表达式逐位一致），所以 5 的
+  `length` 是普通数字，不再是表达式连线。另外三个 H3 文件（t2v/i2v/flf2v）**没有**补 115。
+  `ref_videos` 要 IMAGE 帧序列（不是 VIDEO），所以 runner 插入 `GetVideoComponents` 桥接，帧接 `ref_videos`、
+  音轨接 `ref_video_audios`。
+- `qwen3_tts_voice_design_ui.json`（4 节点）：text / voice_description / seed 都在 **2**（`Qwen3TTSVoiceDesign`），
+  filename_prefix 在 **3**（`SaveAudio`）。
+- `qwen_image_2_1_t2i-Q8_0_gguf_api.json` / `qwen_image_2_1_image_edit-Q8_0_gguf_api.json` 与旧版编号一致
+  （t2i：prompt 459:452、宽高 459:456、seed 459:458、前缀 461；i2i：prompt 459:474、图 470、seed 459:458、前缀 461）。
+
+### 8.4 源文件里两个已知遗留
+
+`qwen_image_2_1_image_edit*` 的 **459:495**（`TextEncodeQwenImage21`，`clip`/`images`/`vae` 全空）和 **459:479**
+（`PrimitiveStringMultiline`，装的是扩写系统提示词）在界面里本来就没接线，转换如实保留。ComfyUI 的校验只从输出
+节点往上递归（`execution.py:1152` `validate_prompt` → `validate_inputs`），够不着的节点既不校验也不执行，
+**不会导致提交被拒**。
+
+### 8.5 落地到 `src\infinite-creation\workflows\` 时动了哪些文件
+
+**不做同名替换**：之前被覆盖的 4 个原件已从 `_replaced_originals\` 还原回去
+（`minimax_h3_ref2v-gguf-8b-heretic-op.json`、`qwen3_tts_voice_design.json`、
+`qwen_image_2_1_t2i-Q8_0_gguf.json`、`qwen_image_2_1_image_edit-Q8_0_gguf.json`），它们的内容与
+ComfyUI 源目录里的界面工作流无关，是上一版 API 图，继续保留可用。
+
+11 个新文件按源名新增；6 个 qwen 因源名与旧文件重名而带 `_api` 后缀，**没有覆盖任何已有文件**。
+
+同时改了 `lib/core/workflow-specs.js` 的四条 sourceFile（`minimax_h3_r2v_gguf` → `hyperflow_ref2v_clipproj_8b.json`、
+`qwen3_tts_voice_design` → `qwen3_tts_voice_design_ui.json`、`qwen_image_2_1_{t2i,i2i}_gguf` → `*_api.json`）与两条
+roles（`minimax_h3_r2v_gguf` → 5/8/14/115，`qwen3_tts_voice_design` → 2/2/2/3），以及
+`lib/core/workflow-runner.js` 的 `mapRoleValue`（`frames` 换算）和 `bindMedia`（视频参考经 `GetVideoComponents`
+拆帧/音轨）。`tests/unit.test.mjs` 同步更新，`npm test` 253 项、252 通过、1 跳过。
