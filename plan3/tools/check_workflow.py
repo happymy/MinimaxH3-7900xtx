@@ -20,7 +20,10 @@ assert beyond the references, so they skip that block.
 import json
 import sys
 
-CLIP_NAME = "qwen3-vl-8b-heretic-1.3.0_fp8_e4m3fn.safetensors"
+CLIP_NAMES = (
+    "qwen3-vl-8b-heretic-1.3.0_fp8_e4m3fn.safetensors",
+    "qwen3-vl-8b-heretic-1.3.0_int8_convrot.safetensors",
+)
 CLIP_TYPE = "boogu"
 MATRIX = "mmh3-8b-ClipProj-v3.1-mlp.safetensors"
 
@@ -75,7 +78,7 @@ def check_api(d):
             problems.append("%s missing from the 8B graph" % label)
 
     if clip_loader is not None:
-        if clip_loader["inputs"].get("clip_name") != CLIP_NAME:
+        if clip_loader["inputs"].get("clip_name") not in CLIP_NAMES:
             problems.append("CLIPLoader still points at %s"
                             % clip_loader["inputs"].get("clip_name"))
         if clip_loader["inputs"].get("type") != CLIP_TYPE:

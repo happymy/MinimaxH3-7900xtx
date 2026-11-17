@@ -25,8 +25,8 @@
 |---|---|
 | `HyperFlow-H3-Flash-GGUF-部署总结.md` | **主文档**。目标 / 结论 / 环境 / 选型取舍 / 安装清单 / 工作流改动 / 实测与显存预算（含 §7.5 连续生成、§7.6 图缓存）/ 踩坑 / 提示词 / 复现 / 未验证 |
 | `tools\` | 工作流生成与自检（7 个文件：4 份 UI 快照 + 3 个脚本）。**只生成 UI 图**，API payload 走 §8 的离线转换 |
-| `API_workflows\` | **11 个 `/prompt` payload**（API 格式）：4 条 H3（与 UI 图同名）+ 6 条 qwen-image（`_api` 后缀）+ 1 条 TTS。**已完成 [infinite-creation](https://github.com/SwotAtmk/infinite-creation) 适配**，转换规则与落地细节见 §8 |
-| `molbal_workflows\` | `user\default\workflows\` 的**完整镜像**（11 份 UI 格式原图：4 H3 + 6 qwen + 1 TTS），内容与 ComfyUI 里逐字节一致，换机时可直接拖回界面；也是 §8 转换的输入 |
+| `API_workflows\` | **11 个 `/prompt` payload**（API 格式）：4 条 H3（与 UI 图同名）+ 6 条 qwen-image（`_api` 后缀）+ 1 条 TTS。**已完成 [infinite-creation](https://github.com/SwotAtmk/infinite-creation) 适配**，转换规则与落地细节见 §8。另有 `API_workflows_int8\`：同 4 条 H3，编码器换 int8（见 §7.7） |
+| `molbal_workflows\` | `user\default\workflows\` 的**完整镜像**（11 份 UI 格式原图：4 H3 + 6 qwen + 1 TTS），内容与 ComfyUI 里逐字节一致，换机时可直接拖回界面；也是 §8 转换的输入。另有 `molbal_workflows_int8\`（同 4 条 H3，编码器换 int8，见 §7.7） |
 | `bat\` | API 直连的分段生成脚本（7 个脚本目录，从 `plan\bat` 移植/原样复制）+ `check_graphs.py` 静态自检 + `提示词模板\`（写提示词前先看）+ `测试素材\` |
 | `t2v\` | 运行时工具。`step0_free.py`，**每次点 Queue 之前跑一次** |
 
@@ -275,6 +275,11 @@ tokens = (length / 4) × (width / 32) × (height / 32)
 
 两个都在这张卡的线内侧，所以**720P/5 秒和 480P/14.4 秒是同一个显存档位**，上限大约 33.5k token。
 
+> **2026-11-17 更正**：上面的 token 预算模型来自**旧环境**（权重会整体载入、跨线就退化成分页）。
+> 本环境是 dynamic VRAM + `--cache-none` + GGUF 流式 DiT，实测 864×480→1280×720（像素 ×2.2）
+> 只多占 0.78 GB、73→124 帧只多占 0.6 GB —— **token 数已经不决定显存**，
+> 所以"33.5k token 天花板"在新环境不成立。新的长度推演见部署总结 §7.8。
+
 关键：跨过这条线的代价不是线性的。345 → 362 只多了 5% token，时间直接 ×3–4，
 因为掉进部分载入后每步都要重新搬权重。**480P 就按 345 帧（14.4 秒）当上限，别去试 362。**
 
@@ -317,7 +322,7 @@ tokens = (length / 4) × (width / 32) × (height / 32)
 |---|---|
 | `stock_{t2v,i2v,flf2v,ref2v}.json` | 官方 `example_workflows/hyperflow_<family>.json` 的 **UI 格式**快照，UI 工作流的起点。上游插件更新后要重新复制 |
 | `make_workflow.py` | 从快照生成 4 个 `hyperflow_<family>_clipproj_8b.json`（写进 ComfyUI 的 `workflows\`）：换 8B heretic 编码器、插 `ClipProjApply`、`weights_in=disk`、改写图内说明。**只出 UI 图**；API payload 由 §8 的离线转换从 UI 图导出，不走这个脚本 |
-| `check_workflow.py` | 静态校验，支持一次传多个文件、按文件形状分流：UI 图查 link 两端；API 图查 `[id, slot]` 引用是否都指向本文档内的节点、有无 UI 残留字段（`widgets_values`）。带 `HyperFlowLoader` 的图再断言 ClipProj 接线、`boogu`、`weights_in=disk`、`euler` / `steps ∈ {4,6,8}`；qwen / TTS 的 payload 只查引用 |
+| `check_workflow.py` | 静态校验，支持一次传多个文件、按文件形状分流：UI 图查 link 两端；API 图查 `[id, slot]` 引用是否都指向本文档内的节点、有无 UI 残留字段（`widgets_values`）。带 `HyperFlowLoader` 的图再断言 ClipProj 接线、`boogu`、`weights_in=disk`、`euler` / `steps ∈ {4,6,8}`（编码器名允许 fp8 与 int8 两种）；qwen / TTS 的 payload 只查引用 |
 | `check_gguf.py` | 核对 GGUF 结构是否符合 `gguf_io.py` 的预期（无 `general.architecture`、`hyperflow_*` 三件套、低秩块计数） |
 
 全用**新环境的 venv** 跑：
@@ -366,7 +371,7 @@ H3 四条相对官方 32B 模板的三处改动（与 UI 图逐项一致，引�
 
 | # | 改动 |
 |---|---|
-| 1 | `CLIPLoader`：`qwen3vl_32b_minimax_h3_nvfp4_awq` / `minimax` → `qwen3-vl-8b-heretic-1.3.0_fp8_e4m3fn` / **`boogu`** |
+| 1 | `CLIPLoader`：`qwen3vl_32b_minimax_h3_nvfp4_awq` / `minimax` → `qwen3-vl-8b-heretic-1.3.0_fp8_e4m3fn`（`API_workflows_int8\` 里是 `_int8_convrot`）/ **`boogu`** |
 | 2 | 新增 `ClipProjApply`（`mmh3-8b-ClipProj-v3.1-mlp`），`MiniMaxH3*.clip` 从 `["2",0]` 改指向它 |
 | 3 | `HyperFlowLoader.weights_in` = **`disk`** |
 
@@ -420,9 +425,11 @@ TTS 一条。
 | `scenes_8b_heretic\` | `gen_h3_scenes-8b-heretic.bat` | 每段独立提示词 + 独立时长，超长自动拆 |
 | `scenes_ref_8b_heretic\` | `gen_h3_scenes_ref-8b-heretic.bat` | 同上 + 参考图/参考视频（段 0 走 ref2va） |
 | `ref2va_8b_heretic\` | `gen_h3_ref2va-8b-heretic.bat` | 参考图生视频，多段末帧续接 |
+| `*_int8\`（上述 4 个的副本） | `*-int8.bat` | 与上游同名脚本逐字节同源，只有 `CLIP_NAME` 换成 `qwen3-vl-8b-heretic-1.3.0_int8_convrot.safetensors`。编码器 staged 从 16,721 MB 降到 10,470 MB（fp8 在 gfx1100 上被摊成 bf16），见部署总结 §7.7 |
 | `extract_frames\` | `gen_extract_frames.bat` | 抽首 / 中 / 末帧（与模型无关） |
 | `qc_frames\` | `gen_h3_qc_frames.bat` | 均匀抽 N 帧 + contact sheet（与模型无关） |
 | `free_vram\` | `free_vram.bat` | 通用 `/free`：`--status` 只看状态、`--interval N` 挂机定时清、`--no-verify` 不等 |
+| `bench\` | `test_once.py`（非 `.bat`，直接 python） | 显存曲线压测：单次生成全程轮询 `/system_stats` 记 `vram_free`，`--size` / `--length` / `--steps` 定档，`--clip` 换编码器做对照。判据看 `comfyui.log` 的 `NNNMB Staged`（§7.7） |
 | `提示词模板\` | — | `MiniMax-H3-提示词书写规则.md`（19 KB，官方两份指南 + 本机节点源码写成）+ 视频 / 静帧 / 照片三个 `.txt` 示例。**写提示词前先看 md**；md 与 `.txt` 冲突时以 md 为准（主文档 §9） |
 | `测试素材\` | — | 两张示例参考图，与 `ref2va_8b_heretic\img\` 同内容 |
 
@@ -483,10 +490,11 @@ ComfyUI 对不认识的输入是**静默忽略**的，写错名字只会「出�
 2. **`--use-ck-attention` 必加**；`--fast-disk` 本机不用写 —— `comfy/storage.py` 会按磁盘类型自动判定为
    True（日志 `Model storage policy: fast_disk=True` 即生效）。真正不能撤的是这一组：
    `--disable-smart-memory --cache-none --fp16-intermediates`（换掉旧环境的「用完就卸」，否则编码器常驻抢显存）。
-3. **1344×768×124 帧 / 6 步已是显存上限**：开跑前关掉所有占显存的程序，
-   否则会退化成数据交换，5 分钟变 16 分钟。
+3. **显存的两个真凶是编码器，不是 DiT**：fp8 编码器被摊成 bf16 吃 14.54 GB（`Staged` 16,721 MB），
+   换 `*_int8` 那套（int8_convrot，`Staged` 10,470 MB）降到 8.47 GB，余量直接宽 6 GB；
+   之后 `1344×768×124` 不再需要为编码器关后台程序。理由与曲线见部署总结 §7.7。
 4. **每次提交前必须 `/free`**（`t2v\step0_free.py`）：跑完一次会留 14.5 GB 驻留，
-   第二次装编码器时必爆。图内卸载节点代替不了它——缺 `gc.collect()` 和 `e.reset()`。
+   第二次装编码器时仍可能爆。图内卸载节点代替不了它——缺 `gc.collect()` 和 `e.reset()`。
    `bat\` 脚本内部的 `free_vram()` 做的就是这件事。
 5. **提示词按 `bat\提示词模板\MiniMax-H3-提示词书写规则.md` 写**：三字段缺一不可（没内容写 `N/A`），
    风格句放 `[Shot 1]` 之后第一句。**不要写禁令** —— CFG 锁死 1，没有负向分支，
