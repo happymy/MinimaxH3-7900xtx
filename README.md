@@ -33,11 +33,11 @@
 | 项 | 旧 portable（`plan/`） | **新 Comfy Desktop（`plan3/`）** |
 |---|---|---|
 | 模型 | MiniMax H3 14B，20 步 | **HyperFlow H3 Flash 14B GGUF Q4_K_M，6 步** |
-| 文本编码器 | Qwen3-VL-4B/8B + ClipProj（单节点 CCTech loader） | **Qwen3-VL-8B Heretic fp8 + `mmh3-8b-ClipProj-v3.1-mlp`（两段式 `Load CLIP` + `ClipProj Apply`）** |
+| 文本编码器 | Qwen3-VL-4B/8B + ClipProj（单节点 CCTech loader） | **Qwen3-VL-8B Heretic + `mmh3-8b-ClipProj-v3.1-mlp`（两段式 `Load CLIP` + `ClipProj Apply`）**。可选 fp8（显存占 16.33 GiB）或 **`*_int8` 套的 int8_convrot（10,470 MB，省 6.2 GB）** |
 | 成片 | 480P（864×480）/ 5 s ≈ 9.5 min | **1344×768 / 124 帧 / 5.17 s，带音轨，≈ 278–294 s** |
 | 采样 | 20 步 | **6 步，38 s/it ≈ 230 s**（4 快 / 8 细） |
-| 显存 | 靠顺序卸载 | **加载时可用 15,299 MB，DiT 载入 8,937 MB —— 已在极限** |
-| 前置纪律 | 关闭其它占显存程序 | **每次点 Queue 前必须先 `/free`**（上一轮残留 14.5 GB，第二次必爆） |
+| 显存 | 靠顺序卸载 | **真峰值是编码器**：fp8 14.54 GB / int8 8.47 GB；DiT 只 8,937 MB，采样段稳定剩 13 GB |
+| 前置纪律 | 关闭其它占显存程序 | **每次点 Queue 前先 `/free`**（上一轮残留 14.5 GB）；换 int8 编码器后不再必须关后台程序 |
 
 **结论：同卡同内存下，画面上到 720P、单条耗时降到旧基线的 1/2。** 详细证据链见
 `plan3/HyperFlow-H3-Flash-GGUF-部署总结.md`。
@@ -50,7 +50,12 @@
 | 832×480 | 345 | 14.4 | 33,540 | 324 s，不爆 |
 | 832×480 | 362 | 15.1 | 35,100 | **爆显存，慢 3–4 倍**，不要试 |
 
-要更长就分段生成再拼（`plan3/bat/multisegment_8b_heretic` / `scenes_8b_heretic`）。
+> **2026-11-17 更正**：上面这张表（含「33.5k token 上限」）是**旧的载入模型**下的结论——
+> 那时权重会整体上卡，跨线就退化成分页。本机现在是 dynamic VRAM + `--cache-none` + GGUF 流式 DiT，
+> 实测像素 ×2.2 只多占 0.78 GB、帧数 ×1.7 只多占 0.6 GB，**token 数已不决定显存**。
+> 新的长度推演见 `plan3/HyperFlow-H3-Flash-GGUF-部署总结.md` §7.8。
+
+要更长就分段生成再拼（`plan3/bat/*_8b_heretic` 或 `*_8b_heretic_int8`）。
 
 ---
 
@@ -64,7 +69,8 @@ $py = "C:\Comfy-Desktop\ComfyUI-Installs\ComfyUI\ComfyUI\.venv\Scripts\python.ex
 #    --disable-smart-memory --cache-none --fp16-intermediates
 #    （--fast-disk 本机按磁盘类型自动为 True，--enable-dynamic-vram 已是默认）
 
-# 2. 关掉所有占显存的程序（浏览器硬件加速 / 其它 ComfyUI / 游戏）
+# 2. 用 int8 编码器那套时这步可跳过；用 fp8 那套（编码器占 14.54 GB）必须关掉
+#    所有占显存的程序（浏览器硬件加速 / 其它 ComfyUI / 游戏）
 
 # 3. 每次点 Queue 之前卸一次，等到 total - 1.5 GB 才返回（连续生成必做）
 & $py "D:\localAI\ComfyUI-last\plan3\t2v\step0_free.py"
@@ -82,6 +88,10 @@ $py = "C:\Comfy-Desktop\ComfyUI-Installs\ComfyUI\ComfyUI\.venv\Scripts\python.ex
 | `hyperflow_i2v_clipproj_8b.json` | `fl2va` | 首帧 |
 | `hyperflow_flf2v_clipproj_8b.json` | `fl2va` | 首帧 + 末帧 |
 | `hyperflow_ref2v_clipproj_8b.json` | `ref2va` | 参考图 ×1–9 |
+
+同一批图的 **int8 副本**（编码器换 `qwen3-vl-8b-heretic-1.3.0_int8_convrot`，省 6.2 GB）已另存为
+`hyperflow_<family>_clipproj_8b_int8.json`，界面里同样直接可见；脚本侧对应 `plan3/bat/*_8b_heretic_int8/`。
+两套并存、互不影响，原文件没改。
 
 **API 工作流**（`/prompt` 直连，`plan3/API_workflows/`，共 11 条，**全部实跑通过**）：
 4 条 H3 与 UI 图同名（`hyperflow_<family>_clipproj_8b.json`），6 条 qwen-image 带 `_api` 后缀，

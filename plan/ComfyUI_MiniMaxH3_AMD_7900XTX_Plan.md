@@ -1009,6 +1009,10 @@ height = round(h_ratio * scale / multiple) * multiple
 
 破限版 staged 反而**多 6,624 MB（+65.6%）**。一个**待验证的假设**：8B 参数 × 2 bytes ≈ 16 GB，与 16,721 MB 数量级吻合 —— ComfyUI 对裸 `fp8_e4m3fn` 可能没有原生反量化快路径，向上转到了 bf16；而 `fp8_scaled` 有 U8+scale 的原生路径故只需 10,097 MB。**此为假设，未验证**，但对 24 GB 卡是实打实的风险：I2V/R2V 场景下 TE 与 DiT 都要抢显存，分页会拖慢并可能 OOM。
 
+> **✅ 2026-11-17 已验证，假设成立。** 根因是 gfx1100 没有 fp8 GEMM：`mixed_precision_ops(..., full_precision_mm=True)`（`comfy/sd.py:114`）要求 MMA 输入为 bf16，于是 fp8 权重在**装载时就物化成 bf16**，staged 对齐的是 bf16 原始体积 16.33 GiB，而不是文件大小 10.02 GB —— 这正好解释了为什么 `fp8_scaled` 不受影响（U8+scale 走原生反量化路径）、以及为什么上游 bf16 版是 16.33 GB。
+> **解法**：换 `int8_convrot` 版（真正的量化格式，运行时才反量化），staged 10,470 MB，编码阶段占用 14.54 → 8.47 GB。
+> 实测、曲线与落地脚本见 `plan3\HyperFlow-H3-Flash-GGUF-部署总结.md` **§7.7**。
+
 #### 11.11.4 选型建议
 
 | 场景 | 建议 | 理由 |

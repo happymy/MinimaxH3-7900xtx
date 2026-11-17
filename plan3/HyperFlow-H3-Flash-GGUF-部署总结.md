@@ -134,7 +134,7 @@ GGUF 转换只打包 LLM，**不含 vision tower、也没有配套 mmproj**，�
 | 层数 | 36 | 50（截断） |
 | 到 DiT | 过一层学出来的矩阵 | 零转换 |
 | 实测 cosine | 线性 0.9289 / `-mlp` **0.9449** | 1.0 |
-| 体积 | 10.02 GB（heretic fp8） | 15.7 GB nvfp4（本机要摊成 64 GB bf16） |
+| 体积 | 10.02 GB（heretic fp8，**显存占 16.33 GiB**，见 §7.7） | 15.7 GB nvfp4（本机要摊成 64 GB bf16） |
 
 ClipProj 能这么做的原理：H3 只要**单个 5120 维隐藏态**（不像 Krea2 要 12 个 tap），
 且 4B / 8B / 32B **共用同一 tokenizer**（151936），所以可以逐位置做闭式岭回归。
@@ -201,6 +201,7 @@ git clone --depth 1 https://v4.gh-proxy.org/https://github.com/Video-Rebirth/Com
 | DiT（GGUF） | `diffusion_models` | `minimax_h3_fl2va_hyperflow_flash_14b-Q4_K_M.gguf` | 9,053,456,480 | 9.05 |
 | DiT（GGUF，ref2v 段 0） | `diffusion_models` | `minimax_h3_ref2va_hyperflow_flash_14b-Q4_K_M.gguf` | 9,220,352,512 | 9.22 |
 | 文本编码器 | `text_encoders` | `qwen3-vl-8b-heretic-1.3.0_fp8_e4m3fn.safetensors` | 10,017,064,632 | 10.02 |
+| 文本编码器（**推荐替换**，见 §7.7） | `text_encoders` | `qwen3-vl-8b-heretic-1.3.0_int8_convrot.safetensors` | 10,979,853,342 | 10.98 |
 | 投影矩阵 | `clip_projections` | `mmh3-8b-ClipProj-v3.1-mlp.safetensors` | 604,093,248 | 0.60 |
 | 视频 VAE | `vae` | `minimax_h3_video_vae_fp16.safetensors` | 5,207,808,496 | 5.21 |
 | 音频 VAE | `vae` | `minimax_h3_audio_vae_fp32.safetensors` | 605,254,808 | 0.61 |
@@ -275,7 +276,7 @@ HyperFlow 的 `GGUFBackend.find()` 会拿到分叉的实现，而分叉没有顶
 
 | # | 改动 | 原 | 新 |
 |---|---|---|---|
-| 1 | `Load CLIP` 模型 + `type` | `qwen3vl_32b_minimax_h3_nvfp4_awq` / `minimax` | `qwen3-vl-8b-heretic-1.3.0_fp8_e4m3fn` / **`boogu`**（走 `sd.py` 的 Qwen3-VL-8B + H3 分支） |
+| 1 | `Load CLIP` 模型 + `type` | `qwen3vl_32b_minimax_h3_nvfp4_awq` / `minimax` | `qwen3-vl-8b-heretic-1.3.0_fp8_e4m3fn`（或 `_int8_convrot`，§7.7）/ **`boogu`**（走 `sd.py` 的 Qwen3-VL-8B + H3 分支） |
 | 2 | 新增 `ClipProj Apply`，串进 clip 链 | CLIP → `MiniMaxH3*ToVideo.clip` | CLIP → **Apply**(`mmh3-8b-ClipProj-v3.1-mlp`) → `MiniMaxH3*ToVideo.clip` |
 | 3 | `HyperFlowLoader.weights_in` | `auto` | **`disk`**（装不下的权重留在 GGUF 映射里流式读，不复制进 RAM） |
 
@@ -341,7 +342,7 @@ H3 四条相对官方 32B 模板的三处改动与 UI 图逐项一致，只是�
 
 | # | 改动 | API 里的形态 |
 |---|---|---|
-| 1 | 换 8B heretic 编码器 | `CLIPLoader.inputs`：`clip_name` = `qwen3-vl-8b-heretic-1.3.0_fp8_e4m3fn.safetensors`，`type` = `boogu` |
+| 1 | 换 8B heretic 编码器 | `CLIPLoader.inputs`：`clip_name` = `qwen3-vl-8b-heretic-1.3.0_fp8_e4m3fn.safetensors`（int8 副本用 `..._int8_convrot.safetensors`，见 §7.7），`type` = `boogu` |
 | 2 | 插 `ClipProjApply` | 新增节点（t2v `16`、i2v `22`、flf2v `23`、ref2v `23`），`MiniMaxH3*.clip` 从 `["2",0]` 改指它 |
 | 3 | 权重驻留策略 | `HyperFlowLoader.inputs.weights_in` = `disk`（可选输入，官方图没写，默认 `auto`） |
 
@@ -445,6 +446,12 @@ loaded completely; 15298.95 MB usable, 8936.71 MB loaded, full load: True
 开跑前必须关掉所有占显存的程序（浏览器硬件加速、其它 ComfyUI 实例、游戏、录屏等）。
 否则 **OOM，或退化成显存↔系统内存的数据交换，单次生成从 ~5 分钟变成 ~16 分钟**。
 
+> **2026-11-17 更新**：下面这张表里缺了最大的那一项——**文本编码器**。
+> fp8 编码器实际占 14.54 GB（staged 16,721 MB），是真正撞墙的地方；
+> 换成 heretic 的 `int8_convrot` 版降到 8.47 GB（staged 10,470 MB），
+> 上述"关程序"的硬要求随之解除。详见 **§7.7**。
+> 另外 VAE 解码那一段（5.5 GB）本节描述的"最挤"判断仍然成立。
+
 日志里能看出余地有多薄：
 
 | 项 | 值 |
@@ -461,7 +468,8 @@ aimdo 0.6.0 的「dynamic VRAM loading / Staged」在显存紧的时候会把权
 
 **因此**：
 
-- 不要再往上加分辨率或帧数（`1344×768×124` 是这台机器的实际上限，不是保守值）
+- 分辨率可以再往上探（换 int8 编码器后 `1344×768` 与 `1280×720` 的采样余量几乎相同），
+  但**帧数**才是成本项：见 §7.8 的长度推演
 - 要更长就分段生成再拼（`bat\multisegment*` / `bat\scenes*`，见 §11）
 - 要更快就 `HyperFlowSigmas=4`（牺牲质量），别指望 `--fast-disk` 再挤时间
 - **要连跑第二次，先看 §7.5**：不是这套参数太极限的问题，是上一轮的权重还驻留在显存里
@@ -542,6 +550,105 @@ UI 输出重播一遍直接返回——**连 `SaveVideo` 都一样**。缓存 ke
   或先跑一次 `/free`（`e.reset()` 会新建整个 `CacheSet`，缓存一起清掉）。
 - 所以「昨天连跑三次都成功」和「第二次必爆」并不矛盾：三次的输入必然不同，
   而爆的那次一定是改了提示词之后真正重跑的。
+
+### 7.7 fp8 文本编码器在 gfx1100 上被摊成 bf16，换 int8_convrot 省 6.2 GB（2026-11-17 实测）
+
+**真峰值是文本编码器，不是 DiT。** DiT（GGUF，`disable_dynamic=True`）稳定 8,937 MB；
+编码器按**文件大小**骗人：`qwen3-vl-8b-heretic-1.3.0_fp8_e4m3fn.safetensors` 磁盘只有
+10.02 GB，日志却写 `16,721MB Staged`（1.67×）。
+
+原因：gfx1100 没有 fp8 GEMM，`mixed_precision_ops(..., full_precision_mm=True)`
+（`comfy/sd.py:114`，`ops.py` 只会抬高这个标志）要求 MMA 输入为 bf16 →
+fp8 权重在**装载时就物化成 bf16**，staged 体积对齐的是 bf16 原始体积（16.33 GiB），
+不是文件体积。上游 trace 佐证：fp8 只覆盖语言塔 50 层 × 7 个 linear，
+vision tower 351 个 key 与 `embed_tokens` 恒为 bf16。
+
+**对照实测**（同一台机器、同一批参数，唯一变量是 `CLIPLoader.clip_name`）：
+
+| TE 文件 | 磁盘 | 日志 `Staged` | 编码阶段实测占用 | 864×480×73 |
+|---|---|---|---|---|
+| `..._fp8_e4m3fn` | 10.02 GB | **16,721 MB** | **14.54 GB**（free 9.44，撞墙） | 采样段 free 13.6–14.2 |
+| `qwen3vl_8b_int8_convrot`（stock，仅做对照） | 9.35 GB | 8,916 MB | 10.48 GB（free 13.50） | — |
+| `qwen3-vl-8b-heretic-1.3.0_int8_convrot` | 10.98 GB | **10,470 MB** | **8.47 GB**（free 15.51） | 69.3 s |
+
+`int8_convrot` 是 ComfyUI 原生量化格式：int8 权重 + per-row scale，**运行时才反量化**，
+staged 与磁盘 1:1，所以换它等于白拿 6.25 GB。
+
+**破限不受影响**：HF `craftingmod/Qwen3-VL-8B-Heretic-INT8` 是
+`DreamFast/Qwen3-VL-8B-Heretic-1.3.0` 的量化版（Apache-2.0），同一个去审查基座，
+量化不会把拒答加回来；vision tower / embed / lm_head / 首末层按设计留 bf16。
+下载走 `https://hf-mirror.com/craftingmod/Qwen3-VL-8B-Heretic-INT8/resolve/main/qwen3-vl-8b-heretic-1.3.0-int8convrot.safetensors`
+→ `models\text_encoders\qwen3-vl-8b-heretic-1.3.0_int8_convrot.safetensors`。
+注意：Civitai 在本机不可达；aria2 的 Windows TLS 后端不认 `--check-certificate=false`，
+会因吊销服务器脱机报 `80092013`，改用 `curl.exe --ssl-no-revoke -C - -L` 下。
+
+**换完之后的余量**（`bat\bench\test_once.py`，同一长提示词、seed 12345、6 步、`--cache-none`）：
+
+| 场景 | 耗时 | 采样段 free | min free |
+|---|---|---|---|
+| 864×480×73 | 69.3 s | 14.04 | 13.28 |
+| 1280×720×124（5.17 s） | **252.3 s** | 13.06 | 10.57 |
+| 1344×768×124（§7.3 的"上限"） | **287.3 s** | 13.01 | 10.28 |
+
+两条 124 帧都一次跑通，不再需要为编码器关后台程序。`min free` 那 10.3–10.5 是采样里的
+瞬时尖峰（预览/attention 临时缓冲，0.5 s 级），稳态始终 13 GB。
+
+**顺带修正 §7.5**：第二次爆的原因是「上一轮 DiT 8.9 + VAE 5.0 + 音频 VAE 0.6 = 14.5 GB 驻留
++ 编码器要装」；把 16,721 换成 10,470 后这笔账从 25.0 GB 降到约 19 GB，仍建议 Queue 前跑 `/free`，
+但已经不再是硬性失败点。
+
+**顺带修正旧误读**：早先记的「四组实验 min vram_free 都是 9.44 GB」不是 DiT 峰值，
+是编码器阶段的占用——DiT 装载前的 14.54 GB。
+
+**落地（新一套，原文件一个字节没动）**：
+
+| 新增 | 内容 |
+|---|---|
+| `bat\scenes_8b_heretic_int8\` | `gen_h3_scenes-8b-heretic-int8.py` + 同名 `.bat` + `prompt.txt` |
+| `bat\multisegment_8b_heretic_int8\` | 同上，`multisegment` |
+| `bat\ref2va_8b_heretic_int8\` | 同上，含 `img\` 示例参考图 |
+| `bat\scenes_ref_8b_heretic_int8\` | 同上，含 `img\` |
+| `API_workflows_int8\` | 4 条 H3 payload（`/prompt` 直接 POST） |
+| `molbal_workflows_int8\` | 4 条 UI 图；已另存到 `user\default\workflows\*_int8.json`，界面里直接可见 |
+| `bat\bench\test_once.py` | 显存曲线压测工具（`--clip` 可换编码器对照），判据见本节 |
+
+新脚本与上游同名脚本逐字节同源，差异只有三处：`CLIP_NAME` 常量、docstring 里的模型名、
+以及"不要开其它 GPU 程序"那条显存备注。冒烟测试：`512x288` / 2 s / 4 步 / seed 999 → 40.1 s 出片。
+
+### 7.8 单段最长能出多少秒（推演，**未实测**）
+
+换 int8 编码器后，**显存不再是帧数的限制项**，这一点有三条实测撑着：
+
+| 变化 | 采样段 `vram_free` 变化 |
+|---|---|
+| 864×480 → 1280×720（像素 ×2.2），同为 124 帧 | 13.84 → 13.06（**只多 0.78 GB**） |
+| 1280×720 → 1344×768（像素 ×1.12） | 13.06 → 13.01（**≈ 0**） |
+| 1280×720 从 73 → 124 帧（时长 ×1.7） | 13.65 → 13.06（**只多 0.6 GB**） |
+
+像素翻倍、帧数 ×1.7，显存都只动零点几 GB → attention 是分块/流式的，工作集几乎是常数
+（DiT 8.9 GB + 固定缓冲）。`min free` 那 10.3 GB 是预览/attention 的瞬时尖峰，与帧数无关。
+
+于是只剩两条墙：**时间**（720p 拟合 `T ≈ 252 s × (帧/124)^1.22`）和**模型自身的长度先验**
+（RoPE/训练长度）——后者**不会在 VRAM 曲线上提前报警**。
+
+| 分辨率 | 单段稳（帧/秒） | 硬撑上限（帧/秒） | 单段耗时 |
+|---|---|---|---|
+| 864×480 | 294 / 12.2 s | 413 / 17.2 s | 5 → 8 min |
+| 1280×720 | 243 / 10.1 s | 345 / 14.4 s | 10 → 15 min |
+| 1344×768 | 243 / 10.1 s | 328 / 13.7 s | 11 → 16 min |
+
+- **超过上限不会 OOM**，先表现为画面发散、动作重复、镜头拖尾。所以不能靠 `/system_stats` 判断到没到顶。
+- 帧数被 `17n+5` 卡成网格：5.17 / 6.58 / 8.00 / 9.42 / 10.83 / 12.25 / 13.67 / 15.08 / 16.50 s，**没有 11.5 s 这种东西**。
+- 想拍长镜头：仍用 `--max-duration` 首帧续接（新 int8 套默认 5 s 一段），成本远低于单段硬撑。
+- 大于 124 帧的样本**一帧都没跑过**，本表纯外推；第一次试建议按网格跳到 8.00 s（192 帧）。
+
+**采样结束后 DiT 为什么"自己"消失**：不是谁主动卸载。`--cache-none` 用 `NullCache` 不存节点输出，
+采样节点跑完 `complete_node_execution()`（`comfy_execution/graph.py:368-373`）pop 掉
+`execution_cache` 里唯一强引用 → ModelPatcher 引用计数归零 →
+`weakref.finalize(real_model, cleanup_models)`（`model_management.py:825-826`）摘掉 LoadedModel →
+`reset_cast_buffers()` 末尾 `soft_empty_cache()`（`:1491`）把 8.9 GB 还给驱动。
+**因此卸载类节点/钩子在这里收益恒为 0**（反证：只去掉 `--cache-none`，钩子立刻打印
+`freed 8937 MB`，但那一刻模型本来就在显存里，等于没省）。
 
 ---
 
@@ -664,7 +771,7 @@ CFG 1 没有负向分支、三种信封结构怎么选、以及本机尺寸/帧�
 |---|---|---|
 | `length` | **124–481 帧**，向上吸附到 `17k+5` | 传 110/120 都变 124，传 200 变 209，**不报错不告警**（规则 md §4.1）。写分镜时间点前先确认实际帧数 |
 | 原生画布 | 短边 **768**（16:9 → 1344×768） | 这是原生尺寸；`bat\` 默认 `864×480` 是降档，能跑但画质掉 |
-| 本机上限 | 1344×768×124 | 再往上加就退化成数据交换（§7.3） |
+| 本机上限 | 分辨率不再设限（720p 与 1344×768 采样余量几乎相同）；**帧数**见 §7.8 推演 | 超过推演值不会 OOM，先表现为画面发散 |
 
 ### 9.4 分辨率不是风格问题的原因
 
@@ -672,7 +779,7 @@ CFG 1 没有负向分支、三种信封结构怎么选、以及本机尺寸/帧�
 作为参考，社区反馈 H3 在 **768p 档依从性明显变差、352/416p 正常**（`MiniMaxAI/MiniMax-H3`
 discussion #65）。但这属于「提示词跟随度」，不是「画风被改写」，两者别混。
 
-本机的显存上限就是 1344×768×124（§7.3），所以这条只能记着，不能靠降分辨率解决。
+本机换 int8 编码器后分辨率不再是瓶颈（1280×720 与 1344×768 的采样余量只差 0.05 GB，§7.8），所以这条只能记着，不能靠降分辨率解决。
 
 ### 9.5 heretic 编码器不是风格开关
 

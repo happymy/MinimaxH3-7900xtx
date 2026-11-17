@@ -211,7 +211,7 @@ bak noerror 0/1/2, bak RAW    ← 调试期快照
 |---|---|
 | `op` | 用**官方原始 prompt**（`bat\归档\prompt_*_op.txt`），不是自己写的 |
 | `8b` | 8B stock 文本编码器 |
-| `heretic` | 破限文本编码器（`fp8_e4m3fn`，仅 116 个视觉塔张量降到 F8_E4M3） |
+| `heretic` | 破限文本编码器（`fp8_e4m3fn`，仅 116 个视觉塔张量降到 F8_E4M3）。⚠️ 这个 fp8 文件在 gfx1100 上会被摊成 bf16，显存占 16.33 GiB（staged 16,721 MB）而不是标称的 10 GB；解法见 plan3 部署总结 §7.7 |
 | `final` | 交付集合层，只放验证通过的 |
 
 ---
