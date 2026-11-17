@@ -322,6 +322,7 @@ tokens = (length / 4) × (width / 32) × (height / 32)
 - 480P 那边每窗只 0.85 GB，656 帧 / 8 窗口实测 17.15 GB，余量很宽。
 
 改动入口：`molbal_workflows_int8_cw/` 里的 UI 工作流，由 `tools\make_cw_workflows.py` 生成（改参数重跑脚本，别手改 JSON）。
+命令行直接出片用 `bat\cw_8b_heretic_int8\`（交互式问 ctx / ov，默认 107 / 22）。
 逐档判爆探针是 `bat\bench\probe_cw.py`。
 
 ---
@@ -461,6 +462,7 @@ TTS 一条。
 | `scenes_ref_8b_heretic\` | `gen_h3_scenes_ref-8b-heretic.bat` | 同上 + 参考图/参考视频（段 0 走 ref2va） |
 | `ref2va_8b_heretic\` | `gen_h3_ref2va-8b-heretic.bat` | 参考图生视频，多段末帧续接 |
 | `*_int8\`（上述 4 个的副本） | `*-int8.bat` | 与上游同名脚本逐字节同源，只有 `CLIP_NAME` 换成 `qwen3-vl-8b-heretic-1.3.0_int8_convrot.safetensors`。编码器 staged 从 16,721 MB 降到 10,470 MB（fp8 在 gfx1100 上被摊成 bf16），**只省编码阶段，不延长单段时长**（§7.7 / §7.8） |
+| `cw_8b_heretic_int8\` | `gen_h3_cw-8b-heretic-int8.bat` | **单段长片（上下文窗口）**：不切段、不用首帧续接，靠 `MiniMaxH3ContextWindows` 一次出到 15.08 s。默认 `1344x768 / 362 帧 / ctx107 ov22` → 4 窗口，实测 874 s。交互式会问 `context_length` / `context_overlap`，也可 `--ctx` / `--ov` 直接给；`--dry-run` 只打印图与窗口数/耗时区间（§7.9） |
 | `extract_frames\` | `gen_extract_frames.bat` | 抽首 / 中 / 末帧（与模型无关） |
 | `qc_frames\` | `gen_h3_qc_frames.bat` | 均匀抽 N 帧 + contact sheet（与模型无关） |
 | `free_vram\` | `free_vram.bat` | 通用 `/free`：`--status` 只看状态、`--interval N` 挂机定时清、`--no-verify` 不等 |

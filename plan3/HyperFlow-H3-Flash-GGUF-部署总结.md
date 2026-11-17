@@ -845,6 +845,7 @@ README §1.2 那张旧环境表给的「约 33.5k token 天花板」反而比本
 #### 工作流与工具
 
 - 带窗口节点的 UI 工作流：`molbal_workflows_int8_cw/`（`tools\make_cw_workflows.py` 从 `molbal_workflows_int8/` 生成，改参数后重跑该脚本，别手改 JSON）
+- 命令行直接出片：`bat\cw_8b_heretic_int8\gen_h3_cw-8b-heretic-int8.bat` —— 单段长片，交互式问 `context_length` / `context_overlap`（默认 107 / 22），也给 `--ctx` / `--ov`；`--dry-run` 不提交，只打印窗口数与耗时区间
 - 逐档判爆探针：`bat\bench\probe_cw.py`（`est_windows()` 复算窗口数；预爆线 22.0 GB、共享显存 >0.35 GB 提前中断；`--early-stop N` / `--keep-going`）
 
 ---
