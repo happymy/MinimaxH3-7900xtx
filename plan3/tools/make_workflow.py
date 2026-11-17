@@ -80,7 +80,7 @@ def note(family, dit):
 
 **32 GB of RAM**: start ComfyUI with `--fast-disk --use-ck-attention`.
 
-**Before each run**: free the previous run's models first -- run `plan3/t2v/step0_free.py` (POST /free with `unload_models` + `free_memory`) and wait until it reports ~ `total - 1.5 GB` free. Without that step the second run OOMs while loading the encoder, because the previous run's DiT and VAEs (14.5 GB) are still resident. A free node at the end of the graph is *not* enough: it skips the worker's `gc.collect()` and `e.reset()`.
+**Before each run**: free the previous run's models first -- run `plan3/t2v/step0_free.py` (POST /free with `unload_models` + `free_memory`) and wait until it reports ~ `total - 1.5 GB` free. Without that step the second run OOMs while loading the encoder, because the previous run's DiT and VAEs (14.5 GB) are still resident. A free node at the end of the graph is *not* enough: what has to be unloaded is the previous run's residue, and that only works *before* the next submit -- a node inside the same graph cannot do it.
 """ % (title, lead, dit, CLIP_NAME, MATRIX)
 
 

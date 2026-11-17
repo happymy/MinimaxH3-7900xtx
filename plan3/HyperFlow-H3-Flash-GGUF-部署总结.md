@@ -255,6 +255,9 @@ elif path not in existing[0]:
 它和 city96 原版**注册同一个节点名 `UnetLoaderGGUF`**，按 custom_nodes 目录名排序，排在后面的会覆盖前面的。
 HyperFlow 的 `GGUFBackend.find()` 会拿到分叉的实现，而分叉没有顶层 `dequant` 模块 → `KeyError`。
 
+**`ComfyUI-UnloadModels`**（`UnloadCPUModels` / `UnloadAfterSampling`）—— 本机装了又删掉，见 §8.10。
+它在 `--cache-none` 下没有可卸的东西，而真正要卸的是**上一轮**的残留，只能在下一次提交前调 `/free`。
+
 顺带：`loader_nodes.py:117` 的 `supports_disk()` 要求 `GGUFModelPatcher` 具备
 `mmap_released` 与 `pin_weight_to_device`；缺任何一个就退回内存模式，`--fast-disk` 白设。
 
@@ -532,6 +535,10 @@ the warm backlight. Soft strumming, distant chatter and a passing tram bell fill
 （executor、`caches.outputs` 里的 latent / IMAGE），对象就活着，显存不还。
 图内节点执行时整个 prompt 还在跑、引用链完整，所以卸了个寂寞。
 
+上表说的是当初自写的 `ClipProjFree`。后来装的 `ComfyUI-UnloadModels` 补上了 `gc.collect()`，
+但它在这套 `--cache-none` 下已经没有可卸的东西，而且时机也不对，同样做不到「下次提交前干净」，
+所以已删掉 —— 见 §8.10。
+
 **`--vram-headroom` 无效，而且注定无效**：它只传给
 `comfy_aimdo.control.init_devices`（`main.py:296`），管的是 **DynamicVRAM 的预算**；
 而 GGUF DiT 是 `disable_dynamic=True` 加载的（`loader_nodes.py:142`），压根不在这个账上。
@@ -776,9 +783,22 @@ ClipProj 作者的实测：`-0.026` / `-0.034` cosine。别被「无审查版」
 
 ### 8.10 别用图内节点代替 `/free`
 
-「跑完就卸」在图上做不到彻底：图内节点缺 `gc.collect()` 与 `e.reset()`，
-实测挂 `ClipProjFree(all models)` 后第二次仍然爆（见 §7.5）。
-卸模型的正确入口是 `/free`，且要在**提交之前**调，不是跑完之后。
+「跑完就卸」在图上做不到彻底，而且**时机本身就错了**。
+
+**`ComfyUI-UnloadModels` 已卸载**（2026-11-17）。它提供的 `UnloadCPUModels` / `UnloadAfterSampling`
+实现并不差 —— `unload_nodes.py:82-83` 有 `gc.collect()` + `mm.soft_empty_cache()`，
+不是早期那种漏了 `gc.collect()` 的半成品。删它的原因是我们这套参数下它无事可做：
+
+- `--cache-none` 用 `NullCache`，采样节点结束时 `execution_cache` 里的强引用被 pop，
+  ModelPatcher 引用归零 → `cleanup_models` 摘掉 LoadedModel → `reset_cast_buffers()` 末尾
+  `soft_empty_cache()` 已经把 8.9 GB 还回去（机制见 §7.8 末）。图内已经没有可卸的东西。
+- 更根本的是时机：需要卸的是**上一轮**的残留（DiT 8.9 + 视频 VAE 5.0 + 音频 VAE 0.6 ≈ 14.5 GB），
+  而那必须发生在**下一次提交之前**。图内节点属于同一张图，改不了下一次提交时的初始状态。
+
+所以正确入口是 `/free`，且要在**提交之前**调。历史证据保留：早期自写节点
+`ClipProjFree(all models)`（**缺** `gc.collect()`）挂在图尾，实测第二次仍然爆（见 §7.5）。
+
+节点清单只剩四个：`ComfyUI-ClipProj`、`ComfyUI-GGUF`、`ComfyUI-HyperFlow-Flash`、`ComfyUI-QWEN3_TTS`。
 
 ### 8.11 换机时先跑一次 `t2v\step0_free.py` 的冷启动基线
 
