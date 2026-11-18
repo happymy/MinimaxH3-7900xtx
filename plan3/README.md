@@ -219,6 +219,8 @@ loaded completely; 8284.17 MB usable, 7367.88 MB loaded, full load: True
 | `--enable-manager` | 打开 Manager | `custom_nodes` 里 qwen GGUF 那处修补（§1.3）靠它加载 |
 
 不要再往里加 `--reserve-vram` / `--disable-pinned-memory`：两条都试过、都摘掉了（复测见下两节）。
+2026-11-18 又单独验了一次 `--reserve-vram 6`：usable 从 15,299 压到 9,855 MB，
+**整卡物理峰值仍是 21.43 GB，一个字节没省**（主文档 §7.10）——它改的是装载预算，不是物理占用。
 `--fast-disk` 与 `--enable-dynamic-vram` 不必写 —— 前者按磁盘类型自动判定，后者在 0.44.2 已是默认。
 
 实测（`user/comfyui.log`），同一工作流、1024²、25 步、Q4_K_M：
@@ -247,9 +249,9 @@ loaded completely; 8284.17 MB usable, 7367.88 MB loaded, full load: True
 顺带：`installations.json` 里 `comfyVersionTag` 还写着 `v0.44.2`（Desktop 的账本滞后），
 以日志的 `ComfyUI version: 0.45.2` + `comfy-kitchen 0.2.41` 为准。
 
-如果改完还是慢，下一步才是 `--disable-dynamic-vram`：社区里 AMD RDNA3 + 慢盘的 10× 减速就是靠它
-（ComfyUI #15661，维护者 rattus128 的回复）。但同一位维护者也提醒，GGUF 用户不建议关动态显存；
-本机 DiT 4.5 GB 能整体驻留，所以这条留着当备选，不先动。
+如果改完还是慢，**别去关动态显存**：`--disable-dynamic-vram` 在 2026-11-18 实测直接把 24 GB 顶爆、
+把机器逼到快死机（主文档 §7.10）。社区里 AMD RDNA3 的 10× 减速那条（ComfyUI #15661）是另一回事，
+而且维护者 rattus128 也明确说 GGUF 用户不建议关动态显存。**动态 VRAM 在这套组合上是省显存的那一层。**
 
 ### H3 有没有被这组参数拖慢（实测：没有）
 
@@ -275,33 +277,39 @@ H3 长片 / 高分辨率 / 连跑时余量不够会掉进部分载入，那时�
 
 | width×height | length | 秒 | token | 实测 |
 |---|---|---|---|---|
-| 864×480 | 294 | 12.25 | 29,756 | 285.8 s，稳 |
-| 864×480 | 328 | 13.67 | 33,210 | **建议上限**（未实测，按 token 留余量） |
-| 864×480 | 345 | 14.38 | 34,931 | 边界：本机 362.4 s 跑通，手动测试爆 → 按不可用 |
-| 864×480 | 413 | 17.21 | 41,816 | 爆：1001 s 未完成 |
+| 864×480 | 294 | 12.25 | 35,235 | 285.8 s，稳 |
+| 864×480 | 328 | 13.67 | 39,285 | **建议上限**（未实测，按 token 留余量） |
+| 864×480 | 345 | 14.38 | 41,310 | 边界：本机 362.4 s 跑通，手动测试爆 → 按不可用 |
+| 864×480 | 413 | 17.21 | 49,410 | 爆：1001 s 未完成 |
 
-token 公式（H3 是 16× 空间 + 4× 时间压缩 + 1×2×2 patch）：
+token 公式（H3 是 16× 空间 + 4× 时间压缩 + 1×2×2 patch）。
+**2026-11-18 更正**：`length / 4` 那版把帧数当连续量算，错了 —— latent 时间轴是按 `17n+5` 抽的：
 
 ```
-tokens = (length / 4) × (width / 32) × (height / 32)
+latent_t = 2 if L <= 5 else ((L - 5) // 17) * 5 + 2
+tokens   = latent_t × (W / 32) × (H / 32)
 ```
 
-- `1344×768×124`（720P 5.2 s）= 31,248
-- `864×480×328`（480P 13.7 s）= 33,210
+864×480 是 27×15 = **405 token/帧**，1344×768 是 42×24 = **1,008/帧**：
 
-两个都在线内侧，所以**720P/5 秒和 480P/13.7 秒是同一个显存档位**，安全线约 33k token。
+- `1344×768×124`（720P 5.2 s）= 37×1,008 = 37,296
+- `864×480×328`（480P 13.7 s）= 97×405 = 39,285
 
-> **2026-11-17 二次更正：token 模型在新环境依然成立。** 早先那条「token 不再决定显存」的更正
-> **是错的**，已用逐档实测推翻。864×480 的 328 帧（33,210 token）可用、345 帧（34,931）已在边界上
-> （本机跑通过、手动测试爆）、413 帧（41,816）跨线；1280×720 的 124 帧（27,900）稳、243 帧（54,675）跨线
-> —— **安全线约 33k token，和上面那张旧环境表一致。**
+两个都在线内侧，所以**720P/5 秒和 480P/13.7 秒仍然是同一个显存档位**，安全线约 **39k token**
+（旧公式给的 33k 是同一个低估，两边乘约 1.19 就换算过来）。
+
+> **2026-11-18 二次更正：公式换了，结论不变。** 早先那条「token 不再决定显存」的更正
+> **是错的**，已用逐档实测推翻。换算到新公式：864×480 的 328 帧（39,285）可用、345 帧（41,310）
+> 已在边界上（本机跑通过、手动测试爆）、413 帧（49,410）跨线；1280×736 的 124 帧（34,040）稳、
+> 243 帧（66,240）跨线 —— **安全线约 39k token。**
 > 显存随帧数缓慢下滑（480p 124→413 帧 min free 12.73→8.84 GB），不是恒定。
-> 完整实测表与判爆方法（看 `Model Initializing` 耗时和首步 s/it，爆了至少 ×3）见部署总结 §7.8。
+> 完整实测表与判爆方法（看 `Model Initializing` 耗时和首步 s/it，爆了至少 ×3）见部署总结 §7.8；
+> 显存口径（torch 少报 5.8 GB）与根因见 §7.10。
 
 关键：跨过这条线的代价不是线性的。345 → 413 只多了 20% token，时间直接 ×5（362 s → 1000 s 还没跑完），
 因为掉进部分载入后每步都要重新搬权重。**480P 就按 328 帧（13.67 秒）当上限，345 已经在边界上。**
 
-同理，720P 若想加长，`1344×768` 每帧 252 token，35000/252 ≈ 139 帧 → 网格上 141 帧（5.9 秒）是那档的推演天花板（未实测）。
+同理，720P 若想加长，`1344×768` 每帧 1,008 token，39,000/1,008 ≈ 38 latent 帧 → 网格上 141 帧（5.9 秒）是那档的推演天花板（未实测）。
 **这条已被 §1.4「开上下文窗口」推翻**：接上窗口节点后 1344×768 实测到 362 帧 / 15.08 s。
 
 填法：`width` / `height` 必须能被 32 整除（`nodes_minimax_h3.py:145-147`），`length` 只能取 17k+5。
@@ -310,7 +318,7 @@ tokens = (length / 4) × (width / 32) × (height / 32)
 
 ### 开上下文窗口能跑多长（实测：1344×768 × 362 帧 / 15.08 s / 874 s）
 
-上面那条 33k token 线是**不开窗口**时的单窗上限。接 `MiniMaxH3ContextWindows` 后激活按窗口封顶，
+上面那条 39k token 线是**不开窗口**时的单窗上限。接 `MiniMaxH3ContextWindows` 后激活按窗口封顶，
 长度改受**窗口数 × 单窗显存**约束。工作机制与社区调研见部署总结 §7.9。
 
 节点只有 5 个输入（**没有「窗口数」参数**，帧数一填 ComfyUI 自己算）：
@@ -346,6 +354,10 @@ tokens = (length / 4) × (width / 32) × (height / 32)
 ```powershell
 # 1. 启动 ComfyUI，参数见 §1.2「跑起来但显存爆/非常慢」
 # 2. 关掉所有占显存的程序（浏览器硬件加速、别的 ComfyUI、游戏）
+# 2.5 花 20 秒确认显存口径（不加载模型、不占显存）
+& "C:\Comfy-Desktop\ComfyUI-Installs\ComfyUI\ComfyUI\.venv\Scripts\python.exe" `
+  "D:\localAI\ComfyUI-last\plan3\bat\bench\check_vram_report.py"
+#    差值 >1 GB = ROCm #16035 仍在你机器上（主文档 §7.10），判爆照样看任务管理器
 # 3. 卸掉上一轮的残留 —— 连续第二次生成不跑这个必爆显存（主文档 §7.5）
 & "C:\Comfy-Desktop\ComfyUI-Installs\ComfyUI\ComfyUI\.venv\Scripts\python.exe" -X utf8 `
   "D:\localAI\ComfyUI-last\plan3\t2v\step0_free.py"
@@ -480,7 +492,7 @@ TTS 一条。
 | `extract_frames\` | `gen_extract_frames.bat` | 抽首 / 中 / 末帧（与模型无关） |
 | `qc_frames\` | `gen_h3_qc_frames.bat` | 均匀抽 N 帧 + contact sheet（与模型无关） |
 | `free_vram\` | `free_vram.bat` | 通用 `/free`：`--status` 只看状态、`--interval N` 挂机定时清、`--no-verify` 不等 |
-| `bench\` | 三个文件（非 `.bat`，直接 python） | `test_once.py`：单档显存曲线压测，`--size` / `--length` / `--steps` 定档，`--clip` 换编码器做对照，判据看 `comfyui.log` 的 `NNNMB Staged`（§7.7）；`probe_limit.py`：逐档试探长度上限，`--lengths` 递增、每档前 `/free`，**首步 s/it > 基线 ×3 即判爆**（§7.8）；`prompt_long.txt`：1,729 字符长提示词，复测用 |
+| `bench\` | 五个文件（非 `.bat`，直接 python） | `test_once.py`：单档显存曲线压测，`--size` / `--length` / `--steps` 定档，`--clip` 换编码器做对照，判据看 `comfyui.log` 的 `NNNMB Staged`（§7.7）；`probe_limit.py`：逐档试探长度上限，`--lengths` 递增、每档前 `/free`，**首步 s/it > 基线 ×3 即判爆**（§7.8）；`probe_vram.py`：单档峰值采集，同时记 torch 与 **Windows 计数器**（`peak_os_ded` 整卡专用 / `peak_os_shared` 共享 / `peak_os_proc` 本进程专用），与 `/system_stats` 时间线一并落 JSON，**判爆用 `peak_os_ded`，别用 `peak_used`**（§7.10）；`check_vram_report.py`：二十秒自查，比对 HIP 的已用与任务管理器的整卡专用，差值 >1 GB 即 ROCm #16035 未修（§7.10）；`prompt_long.txt`：1,729 字符长提示词，复测用 |
 | `提示词模板\` | — | `MiniMax-H3-提示词书写规则.md`（19 KB，官方两份指南 + 本机节点源码写成）+ 视频 / 静帧 / 照片三个 `.txt` 示例。**写提示词前先看 md**；md 与 `.txt` 冲突时以 md 为准（主文档 §9） |
 | `测试素材\` | — | 两张示例参考图，与 `ref2va_8b_heretic\img\` 同内容 |
 
@@ -534,7 +546,7 @@ ComfyUI 对不认识的输入是**静默忽略**的，写错名字只会「出�
 
 ---
 
-## 7. 五条不变的结论
+## 7. 六条不变的结论
 
 1. **GGUF 组 + Qwen3-VL-8B heretic + `mmh3-8b-ClipProj-v3.1-mlp`** 是这台机器（gfx1100 / 24 GB / 32 GB）
    唯一能落地的组合；INT8 组和 32B 编码器都不可达，理由写在主文档 §4。
@@ -555,6 +567,13 @@ ComfyUI 对不认识的输入是**静默忽略**的，写错名字只会「出�
 5. **提示词按 `bat\提示词模板\MiniMax-H3-提示词书写规则.md` 写**：三字段缺一不可（没内容写 `N/A`），
    风格句放 `[Shot 1]` 之后第一句。**不要写禁令** —— CFG 锁死 1，没有负向分支，
    `no anime` / `avoid …` 里的词会照样进入条件向量，把风格拉向它。详见主文档 §9。
+6. **显存口径以任务管理器为准，不信 torch**：HIP 在 Windows 上报的可用显存只算本进程
+   （ROCm #16035，PAL 后端 `pal::Device::globalFreeMemory`），同一个任务 torch 峰值 13.54 GB
+   而整卡实际 21.43 GB，差 5.8 GB。ComfyUI 照这个数规划就会顶到 23.9 GB，再被 WDDM 挪进共享内存
+   → 慢好几倍。**所以不是 24 GB 卡「无缘无故占得多」**：16 GB 上的 CUDA 报整卡可用、不会超装，
+   反而稳。判爆只看**整卡专用 >23.9 GB / 共享 >0.6 GB**；`--reserve-vram` / `GPU_ENABLE_PAL=0`
+   实测都无效，`--disable-dynamic-vram` 会直接顶爆。二十秒自查 `bat\bench\check_vram_report.py`
+   （主文档 §7.10，官方修复 PR 是 `ROCm/rocm-systems#16013`）。
 
 ---
 
