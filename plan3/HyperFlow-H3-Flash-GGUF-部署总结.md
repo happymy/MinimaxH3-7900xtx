@@ -977,17 +977,41 @@ ComfyUI 不会超装；HIP 报的数偏乐观，ComfyUI 照它规划就顶到 23
 它决定「装多少」，装进去之后物理占用不受它约束 —— 这就是 `--reserve-vram` 失效的原因。
 同理，任何「改规划参数省显存」的想法在这套组合上都是空的。
 
-#### 还差 8.4 GB 没解释（未验证）
+#### 还差 8.4 GB 没解释（已排除一个解释）
 
-DiT 阶段物理 19.35、torch 10.95，差 8.4 GB ≈ GGUF 文件本身 8,634 MiB。
-最可能是 GGUF 的映射页与反量化权重**双份常驻**，WDDM 把两份都算进专用显存，而 torch 只统计 tensor。
-**这只是「数字对得上」级别的怀疑，没有实测**；验证方法是换非 GGUF 的 fp8 DiT 对比峰值。
+DiT 权重 8,937 MB、激活按 token 数估 2 GB 上下，能对上账的只有 11 GB 左右；
+任务管理器说本进程 19.35 GB，**剩下 8.4 GB 查不到归属**。原先猜「GGUF 映射页与反量化权重双份常驻」，
+**2026-11-18 已用 `probe_vram.py --weights ram` 排除**：把 `weights_in` 从 `disk` 换成 `ram`
+（权重先从盘读进内存再按层上屏，磁盘映射不参与），峰值仍是 **19.35 / 21.50，完全一样**。
+所以那 8.4 GB 与 GGUF 文件的页缓存无关。
+
+剩下的候选（都未验证）：torch 之外的原生分配（comfy-kitchen int8 attention 的 workspace、
+GGUF 反量化临时缓冲）、以及 11.8 → 5.23 那次「TE 卸载」可能只卸载了一部分。
+想继续查就得用 `hipMemGetInfo` 之外的手段（如逐个 tensor 记账或 AMD 的显存快照工具），
+在那之前**别把 8.4 GB 当成某一项的具体归属**。
+
+#### 试过但没用的两条路
+
+| 试法 | 结果 |
+|---|---|
+| 把 plan1 的「step 0 卸 DiT」搬到本机（`bat\bench\step0_free.py --install`，装进内核的 `latent_preview.py`） | 钩子确实触发（`step0-free: unloaded models before step 1`），本进程 19.35 → 9.01、整卡 21.47 → 11.05，**10 GB 真放掉了**；但随后 80 多秒一步都没走完，只能 `/interrupt` 收场（`Prompt executed in 142.07 seconds`） |
+| 同上但改成动态装载 | 没试：改 `loader_nodes.py:142` 的 `disable_dynamic=True` 属于改既有节点，需要单独评估 |
+
+**为什么钩子会卡死**：HyperFlow 的 GGUF DiT 是 `disable_dynamic=True` **静态装载**
+（`loader_nodes.py:141-143`），`unload_all_models()` 会把权重整体挪到 CPU；
+采样器手里拿的还是同一批 module，于是下一步直接跑在 CPU 上 —— 不报错，只是慢到看不出在动。
+plan1 那边能成立，是因为旧环境开着 `--enable-dynamic-vram`，DiT 是 aimdo 的 VBAR，
+卸载只丢映射、每步按需从盘/内存搬回来。
+
+**更关键的一层**：就算卸载成功，也降不了这个任务的峰值 —— 19.35 GB 是在**装载完成那一刻**
+就到的（t≈20 s），采样中不再上涨。想压低峰值只能减少同时驻留的量，不能靠"跑起来以后卸"。
+`step0_free.py --revert` 已把钩子摘掉，内核回到原样。
 
 #### 判爆口径不变
 
 仍然按**任务管理器整卡专用 >23.9 GB 即爆、共享 >0.6 GB 继续观望**。
 `probe_vram.py` 现在同时采 Windows 计数器（`peak_os_ded` / `peak_os_shared` / `peak_os_proc`），
-日志里那行 `peak_used 13.54 GB` 只是 torch 口径，**别拿它当整卡占用**。
+日志里那行 `peak_used 13.54 GB` 是 23.98 − free 的 HIP 值，**别拿它当整卡占用**。
 
 ---
 

@@ -492,7 +492,7 @@ TTS 一条。
 | `extract_frames\` | `gen_extract_frames.bat` | 抽首 / 中 / 末帧（与模型无关） |
 | `qc_frames\` | `gen_h3_qc_frames.bat` | 均匀抽 N 帧 + contact sheet（与模型无关） |
 | `free_vram\` | `free_vram.bat` | 通用 `/free`：`--status` 只看状态、`--interval N` 挂机定时清、`--no-verify` 不等 |
-| `bench\` | 五个文件（非 `.bat`，直接 python） | `test_once.py`：单档显存曲线压测，`--size` / `--length` / `--steps` 定档，`--clip` 换编码器做对照，判据看 `comfyui.log` 的 `NNNMB Staged`（§7.7）；`probe_limit.py`：逐档试探长度上限，`--lengths` 递增、每档前 `/free`，**首步 s/it > 基线 ×3 即判爆**（§7.8）；`probe_vram.py`：单档峰值采集，同时记 torch 与 **Windows 计数器**（`peak_os_ded` 整卡专用 / `peak_os_shared` 共享 / `peak_os_proc` 本进程专用），与 `/system_stats` 时间线一并落 JSON，**判爆用 `peak_os_ded`，别用 `peak_used`**（§7.10）；`check_vram_report.py`：二十秒自查，比对 HIP 的已用与任务管理器的整卡专用，差值 >1 GB 即 ROCm #16035 未修（§7.10）；`prompt_long.txt`：1,729 字符长提示词，复测用 |
+| `bench\` | 六个文件（非 `.bat`，直接 python） | `test_once.py`：单档显存曲线压测，`--size` / `--length` / `--steps` 定档，`--clip` 换编码器做对照，判据看 `comfyui.log` 的 `NNNMB Staged`（§7.7）；`probe_limit.py`：逐档试探长度上限，`--lengths` 递增、每档前 `/free`，**首步 s/it > 基线 ×3 即判爆**（§7.8）；`probe_vram.py`：单档峰值采集，同时记 torch 与 **Windows 计数器**（`peak_os_ded` 整卡专用 / `peak_os_shared` 共享 / `peak_os_proc` 本进程专用），与 `/system_stats` 时间线一并落 JSON，**判爆用 `peak_os_ded`，别用 `peak_used`**；`--weights ram\|disk` 换 loader 的 `weights_in` 做对照（§7.10）；`check_vram_report.py`：二十秒自查，比对 HIP 的已用与任务管理器的整卡专用，差值 >1 GB 即 ROCm #16035 未修（§7.10）；`step0_free.py`：给内核 `latent_preview.py` 装/摘「step 0 卸 DiT」钩子（`--install` / `--revert` / `--status`，改完要重启）——**在 GGUF DiT 上实测不可用**，静态装载卸下去权重就回不来，采样卡死（§7.10）；`prompt_long.txt`：1,729 字符长提示词，复测用 |
 | `提示词模板\` | — | `MiniMax-H3-提示词书写规则.md`（19 KB，官方两份指南 + 本机节点源码写成）+ 视频 / 静帧 / 照片三个 `.txt` 示例。**写提示词前先看 md**；md 与 `.txt` 冲突时以 md 为准（主文档 §9） |
 | `测试素材\` | — | 两张示例参考图，与 `ref2va_8b_heretic\img\` 同内容 |
 
