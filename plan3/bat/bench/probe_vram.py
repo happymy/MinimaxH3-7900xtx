@@ -154,6 +154,8 @@ def build_graph(seed, args):
                    "class_type": "MiniMaxH3ContextWindows"}
         g["9"]["inputs"]["model"] = ["20", 0]
         g["6"]["inputs"]["model"] = ["20", 0]
+    if args.weights:
+        g["1"]["inputs"]["weights_in"] = args.weights
     if os.path.exists(PROMPT_FILE):
         g["5"]["inputs"]["prompt"] = open(PROMPT_FILE, encoding="utf-8").read().strip()
     return g
@@ -231,6 +233,8 @@ def main():
     ap.add_argument("--seed", type=int, default=4242)
     ap.add_argument("--length", type=int, default=124)
     ap.add_argument("--cw", default=None, help="上下文窗口 ctx/ov（如 107/22）；不给就不挂节点")
+    ap.add_argument("--weights", default=None, choices=["auto", "disk", "ram"],
+                    help="HyperFlowLoader 的 weights_in（默认用图里的 disk）")
     ap.add_argument("--timeout", type=int, default=600)
     ap.add_argument("--out", default=os.path.join(TMP, "vram_probe.json"))
     args = ap.parse_args()
