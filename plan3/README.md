@@ -192,20 +192,34 @@ loaded completely; 8284.17 MB usable, 7367.88 MB loaded, full load: True
 | | 旧环境 0.39.2 | 新环境原来 | 现在 |
 |---|---|---|---|
 | 磁盘直读 | 自动 | 自动（`--fast-disk` 也是它带的） | 自动 |
-| 用后释放显存 | `--disable-smart-memory` | 无（默认常驻） | 已加 |
-| 节点结果缓存 | `--cache-none` | 默认 | 已加 |
-| pinned 内存 | `--disable-pinned-memory` | 默认开（13066 MB） | 已关闭 |
-| 预留显存 | `--reserve-vram 6` | 无 | 已加 |
-| 中间量 | `--fp16-intermediates` | 无 | 已加 |
+| 用后释放显存 | `--disable-smart-memory` | 无（默认常驻） | **已加** |
+| 节点结果缓存 | `--cache-none` | 默认 | **已加** |
+| 中间量 | `--fp16-intermediates` | 无 | **已加** |
+| 预览 | none | none | **`--preview-method auto`**（= latent2rgb） |
+| Manager | — | 自带 | `--enable-manager` |
+| pinned 内存 | `--disable-pinned-memory` | 默认开（13066 MB） | 默认开（加过，试完摘掉） |
+| 预留显存 | `--reserve-vram 6` | 无 | 无（试过 6 GB，摘掉） |
 
-现在的启动参数（Desktop 的 `installations.json` → `launchArgs`）：
+现在的启动参数（Desktop 的 `installations.json` → `launchArgs`），**就这 6 条**：
 
 ```
 --enable-manager --use-ck-attention --preview-method auto
---disable-smart-memory --cache-none --reserve-vram 6 --disable-pinned-memory --fp16-intermediates
+--disable-smart-memory --cache-none --fp16-intermediates
 ```
 
-（`--enable-dynamic-vram` 在 0.44.2 是默认开的，不必再写。）
+语义按本机 `comfy\cli_args.py` 原文（2026-11-18 核对）：
+
+| flag | 源码里的作用 | 对本机 24 GB 的意义 |
+|---|---|---|
+| `--disable-smart-memory` | 装不下就激进退回系统内存，而不是尽量留在显存 | 换掉旧环境的「用完就卸」，编码器不常驻 |
+| `--cache-none` | `NullCache`：**每次运行所有节点全部重算** | 省 RAM/VRAM；代价是每次都重新编码提示词，别指望二次运行变快 |
+| `--fp16-intermediates` | 节点间中间张量用 fp16（Experimental） | 压采样激活，是 362 帧能跑 4 窗口的前提之一 |
+| `--preview-method auto` | `auto` 在 `latent_preview.py:102` 落到 **latent2rgb**：每步对 latent 做一次小矩阵乘 | 不加载 TAESD 权重、几乎不吃显存；只影响界面预览，不影响判爆 |
+| `--use-ck-attention` | 走 comfy-kitchen int8 attention | 采样快一个数量级；内核不支持会直接 `exit(-1)` 拒启 |
+| `--enable-manager` | 打开 Manager | `custom_nodes` 里 qwen GGUF 那处修补（§1.3）靠它加载 |
+
+不要再往里加 `--reserve-vram` / `--disable-pinned-memory`：两条都试过、都摘掉了（复测见下两节）。
+`--fast-disk` 与 `--enable-dynamic-vram` 不必写 —— 前者按磁盘类型自动判定，后者在 0.44.2 已是默认。
 
 实测（`user/comfyui.log`），同一工作流、1024²、25 步、Q4_K_M：
 
@@ -525,7 +539,7 @@ ComfyUI 对不认识的输入是**静默忽略**的，写错名字只会「出�
 1. **GGUF 组 + Qwen3-VL-8B heretic + `mmh3-8b-ClipProj-v3.1-mlp`** 是这台机器（gfx1100 / 24 GB / 32 GB）
    唯一能落地的组合；INT8 组和 32B 编码器都不可达，理由写在主文档 §4。
 2. **`--use-ck-attention` 必加**；`--fast-disk` 本机不用写 —— `comfy/storage.py` 会按磁盘类型自动判定为
-   True（日志 `Model storage policy: fast_disk=True` 即生效）。真正不能撤的是这一组：
+   True（日志 `Model storage policy: fast_disk=True` 即生效）。真正不能撤的是这一组（完整 6 条见 §1.3）：
    `--disable-smart-memory --cache-none --fp16-intermediates`（换掉旧环境的「用完就卸」，否则编码器常驻抢显存）。
 3. **编码器是编码阶段的真凶，但不是长度墙**：fp8 编码器被摊成 bf16 吃 14.54 GB（`Staged` 16,721 MB），
    换 `*_int8` 那套（int8_convrot，`Staged` 10,470 MB）降到 8.47 GB，余量直接宽 6 GB；

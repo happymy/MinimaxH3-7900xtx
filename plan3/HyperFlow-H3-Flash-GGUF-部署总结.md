@@ -38,7 +38,7 @@
 | 应用侧 | API 工作流**已完成 [infinite-creation](https://github.com/SwotAtmk/infinite-creation) 适配**（§6.2；`plan3\README.md` §8.5） |
 | 实测 | t2v 3 次成功，`Prompt executed in` 277.87 / 281.70 / 293.65 s；11 条 API payload 全部实跑通过 |
 | 成片参数 | 1344×768 @ 24 fps，124 帧，5.167 s，H.264 + AAC 32 kHz 立体声 |
-| 启动参数 | `--use-ck-attention --disable-smart-memory --cache-none --fp16-intermediates`（`--fast-disk` 本机自动 True） |
+| 启动参数 | `--enable-manager --use-ck-attention --preview-method auto --disable-smart-memory --cache-none --fp16-intermediates`（6 条，逐条语义见 §3；`--fast-disk` 本机自动 True） |
 | 显存 | **已在极限**（§7.3）——开跑前必须清空其它占显存的程序 |
 | 连续生成 | **每次提交前必须先 `/free`**（§7.5）：跑完一次会留 14.5 GB 驻留，第二次装编码器时必爆。4 s 拿回来，只多付 13 s 重载 |
 | 静态校验 + 实跑 | 4 个 UI 图各自双向一致（link/node：t2v 18/16、i2v 19/17、flf2v 20/18、ref2v 21/18）；**11 条 API payload 引用全解析并全部实跑通过**（§6.2）；`bat\` 的 8 种 API 图节点名与输入名全解析（`check_graphs.py`）；GGUF 结构与 loader 预期逐项对上 |
@@ -72,8 +72,28 @@ python -s ComfyUI\main.py --feature-flag show_signin_button=true --enable-assets
   --extra-model-paths-config "...\Comfy Desktop\instance-model-paths\inst-1794395587998.yaml" \
   --input-directory  D:\Comfy-Desktop\ComfyUI-Shared\input \
   --output-directory D:\Comfy-Desktop\ComfyUI-Shared\output \
-  --fast-disk --use-ck-attention          # ← 这两个是我们加的
+  --use-ck-attention --preview-method auto \
+  --disable-smart-memory --cache-none --fp16-intermediates   # ← 这 5 条是我们加的
 ```
+
+`--enable-manager` 是 Desktop 自带（Manager 要开，`custom_nodes` 里 qwen GGUF 那处修补靠它加载）。
+**`--fast-disk` 不写** —— `comfy/storage.py:104-110` 按磁盘类型自动判定，本机 SSD 判为 True；
+**`--reserve-vram` / `--disable-pinned-memory` 也不写** —— 两条都试过，实测把 usable 从 15,299 MB 压到 9,634 MB，
+摘掉后 0.45.2 复测回到 15,299 MB、H3 6 步 37.98 s/it（`plan3\README.md` §1.3）。
+
+逐条语义（本机 `comfy\cli_args.py` 原文核对，2026-11-18）：
+
+| flag | 源码原文 | 本机作用 |
+|---|---|---|
+| `--use-ck-attention` | comfy-kitchen attention | 采样快一个数量级；kernel 不支持时直接 `exit(-1)` 拒启 |
+| `--preview-method auto` | `LatentPreviewMethod.Auto`，在 `latent_preview.py:102` **落到 `latent2rgb`** | 每步对 latent 做一次小矩阵乘出缩略图；不加载 TAESD 权重、几乎不吃显存，**不影响判爆与耗时基线** |
+| `--disable-smart-memory` | 装不下就激进退回系统内存，而非尽量留在显存 | 编码器（8.47–14.54 GB）用完就退，不常驻抢 DiT 的位置 |
+| `--cache-none` | `NullCache`，**每次运行所有节点全部重算** | 省 RAM/VRAM；代价是每次都要重新编码提示词，第二次跑同一图不会更快 |
+| `--fp16-intermediates` | 节点间中间张量 fp16（Experimental） | 压采样激活，362 帧 4 窗口能站住的前提之一 |
+| `--enable-manager` | 打开 Manager | 加载 `custom_nodes` |
+
+§7.9 的耗时基线（874 s / 1,216 s / 1,066 s）和 `bat\` 脚本都在本机这套参数下跑出来的
+（`--preview-method auto` 的缩略图开销已包含在内：latent2rgb 是对 latent 的小矩阵乘，不占权重显存）。
 
 ---
 
@@ -430,7 +450,7 @@ duration: 5.166688 s, size: 1.31 MB
 ```
 Using pytorch attention
 Using Comfy Kitchen attention            ← --use-ck-attention 生效
-Model storage policy: fast_disk=True     ← --fast-disk 生效
+Model storage policy: fast_disk=True     ← 自动判定（没传 --fast-disk，见下）
 Requested to load BooguTEModel_          ← type=boogu 走对了分支
 model_type FLOW_AV
 HyperFlow: 18 factorized blocks, two-time=True, 6-step schedule
@@ -441,7 +461,9 @@ loaded completely; 15298.95 MB usable, 8936.71 MB loaded, full load: True
 `weights_in=auto` 不是「猜」：它查 `comfy.storage.model_fast_disk([path])`，
 而那个函数在 `args.fast_disk` 为真时直接返回 True（`comfy/storage.py:104`），
 `disk` 走的是同一个判断（`storage.py:105`），所以上面那行日志现在会显示 `weights_in=disk`，
-行为不变。**没有 `--fast-disk` 就会退回内存模式**，32 GB 内存顶不住 9 GB DiT + 10 GB 编码器 + 采样激活。
+行为不变。`args.fast_disk` **本机没传也已经是 True**（`storage.py:104-110` 按磁盘类型自动判定），
+真实启动参数里没有 `--fast-disk`；显式 `--disable-fast-disk` 才会退回内存模式，
+而那样 32 GB 内存顶不住 9 GB DiT + 10 GB 编码器 + 采样激活。
 
 ### 7.3 显存已在极限（用户实测结论，务必照做）
 
@@ -1024,7 +1046,8 @@ Get-ChildItem "$wf\hyperflow_*_clipproj_8b.json" | ForEach-Object { & $py "$here
 & $py "$here\check_gguf.py"
 & $py "D:\localAI\ComfyUI-last\plan3\bat\check_graphs.py"   # bat 脚本的 8 种 API 图
 
-# 5. Desktop 里加启动参数：--fast-disk --use-ck-attention
+# 5. Desktop 里填启动参数（6 条，见 §3）：--enable-manager --use-ck-attention --preview-method auto
+#    --disable-smart-memory --cache-none --fp16-intermediates
 # 6. 关掉所有占显存的程序
 # 7. 每次点 Queue 之前先卸一次（连续生成必须做，见 §7.5）
 & $py "D:\localAI\ComfyUI-last\plan3\t2v\step0_free.py"
