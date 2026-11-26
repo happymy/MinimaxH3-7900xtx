@@ -14,6 +14,7 @@
 | 文件 / 目录 | 内容 |
 |---|---|
 | `Sulphur3-省显存部署总结.md` | **主文档**。环境、选型、模型清单、节点、启动参数、省显存决策、实测与未验证项 |
+| `Sulphur3-提示词写法与H3区别.md` | **提示词专文**。S3 JSON schema vs H3 三段式、官方完整样本、Dynamic Prompts 花括号坑、社区现状 |
 | `API_workflows\` | **12 条 API payload**：4 任务 × 3 编码器档（4B / 8B / 8B-heretic） |
 | `workflows\` | **12 张 UI 工作流**：同名 JSON，可拖进 Desktop 界面编辑 |
 | `tools\make_workflows.py` | 从 API graph 生成上述 24 个 JSON（需 ComfyUI 在线读 `/object_info`） |
