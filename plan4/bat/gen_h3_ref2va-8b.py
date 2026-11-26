@@ -88,7 +88,7 @@ def frames_for(duration):
 def build_graph(prompt, width, height, length, steps, seed, refs, ref_image_size='match'):
     """段 0：ref2va 参考图生成（rell 模板同构）；refs 为已上传图片文件名列表。"""
     n = {'1': {'class_type': 'UnetLoaderGGUF', 'inputs': {'unet_name': GGUF_REF2VA}},
-    '1b': {'class_type': 'MiniMaxH3SigmaShift', 'inputs': {'model': ['1b', 0], 'shift_video': 12.0, 'shift_audio': 3.0}},
+    '1b': {'class_type': 'MiniMaxH3SigmaShift', 'inputs': {'model': ['1', 0], 'shift_video': 12.0, 'shift_audio': 3.0}},
          '2': {'class_type': 'ClipProjLoader', 'inputs': {'clip_name': CLIP_NAME, 'type': CLIP_TYPE, 'projection': CLIP_PROJ, 'device': 'cuda:0', 'mode': 'dynamic'}},
          '3': {'class_type': 'VAELoader', 'inputs': {'vae_name': VIDEO_VAE}},
          '4': {'class_type': 'VAELoader', 'inputs': {'vae_name': AUDIO_VAE}},
@@ -118,7 +118,7 @@ def build_graph(prompt, width, height, length, steps, seed, refs, ref_image_size
 def build_fl_graph(prompt, width, height, length, steps, seed, first_frame):
     """段 i>0：fl2va 首帧续接（实测 gen_h3_multisegment 的图）：first_frame=上一段末帧。"""
     n = {'1': {'class_type': 'UnetLoaderGGUF', 'inputs': {'unet_name': GGUF_FL2VA}},
-    '1b': {'class_type': 'MiniMaxH3SigmaShift', 'inputs': {'model': ['1b', 0], 'shift_video': 12.0, 'shift_audio': 3.0}},
+    '1b': {'class_type': 'MiniMaxH3SigmaShift', 'inputs': {'model': ['1', 0], 'shift_video': 12.0, 'shift_audio': 3.0}},
          '2': {'class_type': 'ClipProjLoader', 'inputs': {'clip_name': CLIP_NAME, 'type': CLIP_TYPE, 'projection': CLIP_PROJ, 'device': 'cuda:0', 'mode': 'dynamic'}},
          '3': {'class_type': 'VAELoader', 'inputs': {'vae_name': VIDEO_VAE}},
          '4': {'class_type': 'VAELoader', 'inputs': {'vae_name': AUDIO_VAE}},

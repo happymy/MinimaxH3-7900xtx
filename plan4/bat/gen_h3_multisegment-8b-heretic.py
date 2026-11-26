@@ -72,7 +72,7 @@ def frames_for(duration):
 def build_graph(prompt, width, height, length, steps, seed, first_frame=None):
     """构造与 minimax_h3_t2v-gguf 模板同构的 API 图；i>0 时接 LoadImage -> first_frame。"""
     n = {'1': {'class_type': 'UnetLoaderGGUF', 'inputs': {'unet_name': GGUF_UNET}},
-    '1b': {'class_type': 'MiniMaxH3SigmaShift', 'inputs': {'model': ['1b', 0], 'shift_video': 12.0, 'shift_audio': 3.0}},
+    '1b': {'class_type': 'MiniMaxH3SigmaShift', 'inputs': {'model': ['1', 0], 'shift_video': 12.0, 'shift_audio': 3.0}},
          '2': {'class_type': 'ClipProjLoader', 'inputs': {'clip_name': CLIP_NAME, 'type': CLIP_TYPE, 'projection': CLIP_PROJ, 'device': 'cuda:0', 'mode': 'dynamic'}},
          '3': {'class_type': 'VAELoader', 'inputs': {'vae_name': VIDEO_VAE}},
          '4': {'class_type': 'VAELoader', 'inputs': {'vae_name': AUDIO_VAE}},

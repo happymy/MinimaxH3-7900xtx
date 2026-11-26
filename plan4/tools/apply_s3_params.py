@@ -34,6 +34,10 @@ def patch(path):
     text = text.replace("'model': ['1', 0]", "'model': ['1b', 0]")
     text = text.replace("'sampler_name': 'res_multistep'", "'sampler_name': 'euler'")
     text = text.replace("'sampler_name': 'er_sde'", "'sampler_name': 'euler'")
+    # 上面的全局替换会把 SigmaShift 自己的 model 也改成 1b（自引用），改回来
+    text = text.replace(
+        "'class_type': 'MiniMaxH3SigmaShift', 'inputs': {'model': ['1b', 0]",
+        "'class_type': 'MiniMaxH3SigmaShift', 'inputs': {'model': ['1', 0]")
     with open(path, "w", encoding="utf-8", newline="\n") as f:
         f.write(text)
     return "patched %d graph(s)" % inserted
