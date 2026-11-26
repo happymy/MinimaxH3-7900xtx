@@ -106,6 +106,11 @@ Sulphur 3 是**标准非 Turbo 的 H3 fine-tune**，20 步采样范式与 plan1 
 
 已修正所有脚本与 12 条工作流；`tools\apply_s3_params.py` 是幂等补丁且修复了 SigmaShift 自引用问题。
 
+**格式差异（社区核实 2026-11-26）**：S3 用 JSON 结构化 caption（`subjects / camera / temporal / audio_context` 等），
+H3 用三段式（`integrated_multimodal_description` 等）；社区没有 Sulphur 专属 skill。
+⚠️ **Dynamic Prompts 会剥掉 JSON 花括号**——UI 里手贴会损坏提示词，必须走 API 提交
+（`run_workflow.py` / `gen_sulphur.py` 走 `POST /prompt`，正确）。详见主文档 §9.5。
+
 **Corrector 暂不装**：`s3_corrector.safetensors` 7.44 GB，fp32 常驻约 8 GB；
 24 GB 卡上 DiT 11.6 + 8B TE 9~11 + 双 VAE 5.8 + corrector 8 会爆。官方也明确它是可选项。
 

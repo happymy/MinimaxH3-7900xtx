@@ -213,6 +213,26 @@ ref2va 脚本的两个 DiT 常量都指向主权重：官方 `s3_ref2va` 标注 
 
 `tools\apply_s3_params.py` 是幂等补丁；改动只在 plan4 资产内，未动 plan1/plan3。
 
+**社区核实（2026-11-26 联网）**：S3 的提示词写法与 H3 确实不同：
+
+| | Sulphur 3 (S3) | MiniMax H3 |
+|---|---|---|
+| 格式 | **JSON 结构化 caption** | 三段式文本字段 |
+| 字段 | `subjects / objects / environment / camera / temporal / audio_context / salient_details` | `integrated_multimodal_description / overall_soundscape / non_diegetic_music` |
+| 依据 | 官方 `example_workflow.json` + RunComfy 的 Sulphur 3 工作流 | MiniMax 官方基础模式指南、`h3-prompt-writing` skill |
+| 专属 skill | **无**（仓库只有 corrector 节点 + 示例图） | `h3-prompt-writing` 已装 |
+
+RunComfy 实操细节：`temporal` 写画面动作的顺序，`audio_context` 写对应声音，
+`subjects` / `camera` / `environment` 分开写，别混成一段。
+
+**Dynamic Prompts 坑**：ComfyUI 前端的 Dynamic Prompts 会把 JSON 的 `{}` 当成提示词语法**剥掉**——
+在 UI 里直接粘贴 JSON 会损坏提示词；要原样保留必须走 API 提交，把 JSON 作为 text 字符串传给节点。
+plan4 的 `run_workflow.py` / `gen_sulphur.py` 都是 `POST /prompt`，路径正确；
+但若用 UI 工作流手贴 JSON，花括号会被吃掉。
+
+社区没有公开的 S3 prompt enhancer 工具——官方 note 的「written by its prompt enhancer」
+指训练时的内部工具。`bat\prompt_s3.json` 是按 schema 手写，非官方生成器产出。
+
 **Corrector 暂不装**：`s3_corrector.safetensors` = 7,988,398,520 B（7.44 GiB），
 官方 note 说 fp32 常驻约 8 GB（bf16 会改变输出）。24 GB 卡上 DiT 11.6 + 8B TE 9~11
 + 双 VAE 5.8 + corrector 8 会爆。官方也明确它是可选项，且对其他 H3 模型也有效。
