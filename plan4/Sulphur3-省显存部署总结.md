@@ -56,6 +56,9 @@ Desktop 实际用 `ComfyUI\.venv\Scripts\python.exe` 跑内核（启动日志已
 | 投影矩阵 | `clip_projections/mmh3-4b-ClipProj-v3.1.safetensors` | 26,256,128 | plan1 复制 | 已就位 |
 | 视频 VAE | `vae/minimax_h3_video_vae_int8_convrot.safetensors` | 2,811,065,184 | `Comfy-Org/MiniMax-H3`（hf-mirror） | 已就位 |
 | 音频 VAE | `vae/minimax_h3_audio_vae_fp32.safetensors` | 605,254,808 | plan1 复制 | 已就位 |
+| 8B TE | `text_encoders/qwen3vl_8b_int8_convrot.safetensors` | 9,350,798,360 | plan3 复制 | 已就位 |
+| 8B heretic TE | `text_encoders/qwen3-vl-8b-heretic-1.3.0_int8_convrot.safetensors` | 10,979,853,342 | plan3 复制 | 已就位 |
+| 8B 投影 | `clip_projections/mmh3-8b-ClipProj-v3.1.safetensors` | 41,990,896 | plan1 复制 | 已就位 |
 
 **为什么不去 32B**：Sulphur 官方推荐 Qwen3-VL-32B（Q4 GGUF 14.6 GB / NVFP4 15.7 GB / INT8 27.1 GB），
 24 GB 卡同时装 32B TE + 11.6 GB DiT 不可能。ClipProj 的 4B/8B 投影是本机唯一可行路径；
@@ -146,16 +149,20 @@ plan1 在 11.42 GB DiT 上跑通 480P/124 帧/20 步（370.6 s），Sulphur Q4_K
 
 | 目录 | 内容 |
 |---|---|
-| `API_workflows/` | 4 条 `/prompt` inner graph：t2v / i2v / flf2v / ref2v |
-| `workflows/` | 同名 4 张 UI 图，可拖进 Desktop |
-| `tools/make_workflows.py` | 读 `/object_info` 生成上述 8 个 JSON（需 ComfyUI 在线） |
-| `bat/run_workflow.py` | 通用提交器，读任一 API 图，支持 4 种任务 |
-| `bat/gen_sulphur.py` | 多段生成（首测脚本） |
+| `API_workflows/` | 12 条 `/prompt` inner graph：4 任务 × 3 编码器档 |
+| `workflows/` | 同名 12 张 UI 图，可拖进 Desktop |
+| `tools/make_workflows.py` | 读 `/object_info` 生成上述 24 个 JSON（需 ComfyUI 在线） |
+| `tools/migrate_8b.py` | 从 plan1 移植 8 个 8B 脚本的一次性工具 |
+| `bat/run_workflow.py` | 通用提交器，读任一 API 图，支持 12 种组合 |
+| `bat/gen_sulphur.py` | 多段生成（首测脚本，4B 档） |
+| `bat/gen_h3_{multisegment,ref2va,scenes,scenes_ref}-8b*.py` | 8 个 8B / 8B-heretic 脚本 |
 | `bat/gen_extract_frames.py` / `gen_h3_qc_frames.py` / `free_vram.py` | 从 plan1 复制，ffmpeg 路径已修 9.1 |
 
 4 条任务与原生节点：t2v 纯提示词；i2v 挂 `LoadImage → first_frame`；
 flf2v 挂首尾两帧；ref2v 挂 `MiniMaxH3AddGuide(frame_idx=0, vae, image)`。
-未移植 plan1 的 8B / 8B-heretic 变体——与省显存目标冲突。
+三档编码器：4B 用 `CLIPLoaderGGUF`（GGUF），8B / 8B-heretic 用 `CLIPLoader`（int8 safetensors, boogu），
+都接 `ClipProjApply`。8B 选 plan3 的 int8_convrot 版而非 plan1 的 fp8 版——后者 staged 16,721 MB 超显存。
+ref2va 脚本的两个 DiT 常量都指向主权重：官方 `s3_ref2va` 标注 not trained。
 
 ### 9.4 时长与耗时外推（除 124 帧外均为预测）
 

@@ -29,7 +29,9 @@ def frames_for(duration):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("workflow", choices=["t2v", "i2v", "flf2v", "ref2v"])
+    workflows = ["t2v", "i2v", "flf2v", "ref2v"]
+    workflows += [w + s for w in workflows for s in ("_8b", "_8b_heretic")]
+    ap.add_argument("workflow", choices=workflows)
     ap.add_argument("--image", help="首帧 / 参考图（i2v / flf2v / ref2v）")
     ap.add_argument("--last-image", help="尾帧（flf2v）")
     ap.add_argument("--prompt-file", default=os.path.join(HERE, "prompt.txt"))

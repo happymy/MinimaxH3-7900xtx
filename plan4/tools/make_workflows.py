@@ -21,6 +21,9 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 UNET = "Sulphur-3-Q4_K_M.gguf"
 TE = "qwen3-vl-4b-heretic-Q4_K_M.gguf"
 PROJ = "mmh3-4b-ClipProj-v3.1.safetensors"
+TE8 = "qwen3vl_8b_int8_convrot.safetensors"
+TE8H = "qwen3-vl-8b-heretic-1.3.0_int8_convrot.safetensors"
+PROJ8 = "mmh3-8b-ClipProj-v3.1.safetensors"
 VVAE = "minimax_h3_video_vae_int8_convrot.safetensors"
 AVAE = "minimax_h3_audio_vae_fp32.safetensors"
 PROMPT_FILE = os.path.join(ROOT, "bat", "prompt.txt")
@@ -37,15 +40,16 @@ def info(node):
     return _INFO[node]
 
 
-def base_graph():
+def base_graph(te=TE, proj=PROJ, clip_cls="CLIPLoaderGGUF"):
     prompt = ""
     if os.path.exists(PROMPT_FILE):
         with open(PROMPT_FILE, encoding="utf-8") as f:
             prompt = f.read().strip()
+    ctype = "krea2" if clip_cls == "CLIPLoaderGGUF" else "boogu"
     return {
         "1": {"class_type": "UnetLoaderGGUF", "inputs": {"unet_name": UNET}},
-        "2": {"class_type": "CLIPLoaderGGUF", "inputs": {"clip_name": TE, "type": "krea2"}},
-        "2b": {"class_type": "ClipProjApply", "inputs": {"clip": ["2", 0], "projection": PROJ}},
+        "2": {"class_type": clip_cls, "inputs": {"clip_name": te, "type": ctype}},
+        "2b": {"class_type": "ClipProjApply", "inputs": {"clip": ["2", 0], "projection": proj}},
         "3": {"class_type": "VAELoader", "inputs": {"vae_name": VVAE}},
         "4": {"class_type": "VAELoader", "inputs": {"vae_name": AVAE}},
         "5": {"class_type": "MiniMaxH3ImageToVideo", "inputs": {
@@ -71,25 +75,35 @@ def base_graph():
 
 
 def variants():
-    t2v = base_graph()
-    i2v = base_graph()
-    i2v["17"] = {"class_type": "LoadImage", "inputs": {"image": "example.png"}}
-    i2v["5"]["inputs"]["first_frame"] = ["17", 0]
+    out = {}
+    configs = [
+        ("", TE, PROJ, "CLIPLoaderGGUF"),
+        ("_8b", TE8, PROJ8, "CLIPLoader"),
+        ("_8b_heretic", TE8H, PROJ8, "CLIPLoader"),
+    ]
+    for suffix, te, proj, cls in configs:
+        out["t2v" + suffix] = base_graph(te, proj, cls)
 
-    flf2v = base_graph()
-    flf2v["17"] = {"class_type": "LoadImage", "inputs": {"image": "first.png"}}
-    flf2v["18"] = {"class_type": "LoadImage", "inputs": {"image": "last.png"}}
-    flf2v["5"]["inputs"]["first_frame"] = ["17", 0]
-    flf2v["5"]["inputs"]["last_frame"] = ["18", 0]
+        i2v = base_graph(te, proj, cls)
+        i2v["17"] = {"class_type": "LoadImage", "inputs": {"image": "example.png"}}
+        i2v["5"]["inputs"]["first_frame"] = ["17", 0]
+        out["i2v" + suffix] = i2v
 
-    ref2v = base_graph()
-    ref2v["17"] = {"class_type": "LoadImage", "inputs": {"image": "reference.png"}}
-    ref2v["19"] = {"class_type": "MiniMaxH3AddGuide", "inputs": {
-        "positive": ["5", 0], "latent": ["5", 1], "vae": ["3", 0],
-        "image": ["17", 0], "frame_idx": 0}}
-    ref2v["7"]["inputs"]["conditioning"] = ["19", 0]
+        flf2v = base_graph(te, proj, cls)
+        flf2v["17"] = {"class_type": "LoadImage", "inputs": {"image": "first.png"}}
+        flf2v["18"] = {"class_type": "LoadImage", "inputs": {"image": "last.png"}}
+        flf2v["5"]["inputs"]["first_frame"] = ["17", 0]
+        flf2v["5"]["inputs"]["last_frame"] = ["18", 0]
+        out["flf2v" + suffix] = flf2v
 
-    return {"t2v": t2v, "i2v": i2v, "flf2v": flf2v, "ref2v": ref2v}
+        ref2v = base_graph(te, proj, cls)
+        ref2v["17"] = {"class_type": "LoadImage", "inputs": {"image": "reference.png"}}
+        ref2v["19"] = {"class_type": "MiniMaxH3AddGuide", "inputs": {
+            "positive": ["5", 0], "latent": ["5", 1], "vae": ["3", 0],
+            "image": ["17", 0], "frame_idx": 0}}
+        ref2v["7"]["inputs"]["conditioning"] = ["19", 0]
+        out["ref2v" + suffix] = ref2v
+    return out
 
 
 def input_type(node, name):
