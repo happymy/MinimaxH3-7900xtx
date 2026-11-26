@@ -3,7 +3,7 @@
 ## 1. 目标
 
 在独立的 `C:\plan4` 环境部署 **SulphurAI/Sulphur-3**，尽量压低 24 GB 卡（7900XTX）的显存占用，
-并保留 plan1 已验证的 20 步采样链。
+沿用 plan1 的 20 步链形态，但采样参数按 S3 官方改为 `euler` + `shift 12/3`（见 §9.5）。
 
 ## 2. 关键判断：为什么不是 plan3 那套
 
@@ -92,7 +92,9 @@ ClipProj v3.1 基准（297 次语音 + 405 次图像渲染）中 4B 与 8B 归�
 | `VIDEO_VAE` | `minimax_h3_video_vae_fp16.safetensors` | `minimax_h3_video_vae_int8_convrot.safetensors` |
 | 节点 2 | `CCTechClipProjLoader`（3 输入） | `CLIPLoaderGGUF` + `ClipProjApply`（两段，见 §5） |
 
-采样参数不变：`simple` / 20 步 / `res_multistep` / cfg 1.0（BasicGuider 隐含）。
+采样参数原为 `simple` / 20 步 / `res_multistep` / cfg 1.0；**现按 S3 官方修正为
+`simple` / 20 步 / `euler` / `MiniMaxH3SigmaShift(12, 3)` / cfg 1.0**（见 §9.5）。
+下表只列首测时的常量改动，S3 参数补丁由 `tools\apply_s3_params.py` 统一施加。
 帧数 `max(5, round(秒×24))` 后对齐 `17k+5`，20 s → 481 帧（静默吸附，不报错）。
 
 ## 7. 省显存账
@@ -113,7 +115,8 @@ plan1 在 11.42 GB DiT 上跑通 480P/124 帧/20 步（370.6 s），Sulphur Q4_K
    「retraining a finished, CFG-distilled model was significantly harder」。
 3. **20 s = 481 帧**在官方训练范围（124–362）之外；plan1 历史值 2391 s 是旧栈数据。
 4. **720P 与 ≥209 帧**未实测；表里的耗时全是外推（见 §9）。
-5. **4 张 UI 工作流**由 `make_workflows.py` 生成，结构已本地校验，但尚未逐张拖进 Desktop 实点。
+5. **12 张 UI 工作流**由 `make_workflows.py` 生成；仅 `sulphur_t2v_8b_heretic.json`
+   经用户拖进 Desktop 实跑通过（2026-11-26），其余 11 张未逐张实点。
 
 ---
 
@@ -128,12 +131,16 @@ plan1 在 11.42 GB DiT 上跑通 480P/124 帧/20 步（370.6 s），Sulphur Q4_K
 | 产物 | `h3_multisegment_3538674239439636468.mp4`，用户目视确认正常 |
 | 环境 | Comfy Desktop 0.46.3，argv 已确认 5 条启动参数全在 |
 
+> 上表是**旧参数**下的结果（`res_multistep`、无 SigmaShift）。现资产已改 `euler` + shift 12/3，
+> 315.3 s 不能直接当作新配置的耗时。
+
 首测前修了三处：`CLIPLoaderGGUF` + `ClipProjApply`（4B GGUF 绕路）、
 `install_video_blocks` 的 `getattr` 兜底（4B 无 `preprocess_embed`）、ffmpeg 9.0.2 → 9.1。
 
 ### 9.2 step0 卸 DiT 的 A/B
 
 钩子来自 plan3 的无预览版 `step0_free.py`（只 hook `unload_all_models` + `soft_empty_cache`）。
+这一组 A/B 同样是**旧参数**（`res_multistep`、无 SigmaShift）下的对照。
 
 | 组 | 钩子 | 同 seed 耗时 | 现象 |
 |---|---|---:|---|
@@ -168,7 +175,7 @@ ref2va 脚本的两个 DiT 常量都指向主权重：官方 `s3_ref2va` 标注 
 
 ### 9.4 时长与耗时外推（除 124 帧外均为预测）
 
-依据：plan4 的 315.3 s 基准、帧数指数 c≈1.484（plan1 §11.10.5）、
+依据：plan4 的 315.3 s 基准（**旧参数** `res_multistep`、无 SigmaShift；新参数 euler + shift 的耗时未测）、帧数指数 c≈1.484（plan1 §11.10.5）、
 像素指数 b≈1.144（下界）、plan3 §7.8 的显存墙实测（plan4 DiT 比 HyperFlow 大 2.2 GB，墙只会更早）。
 
 | 分辨率 | 帧数 | 视频时长 | 预计墙钟 | 判断 |
@@ -206,3 +213,7 @@ ref2va 脚本的两个 DiT 常量都指向主权重：官方 `s3_ref2va` 标注 
 **Corrector 暂不装**：`s3_corrector.safetensors` = 7,988,398,520 B（7.44 GiB），
 官方 note 说 fp32 常驻约 8 GB（bf16 会改变输出）。24 GB 卡上 DiT 11.6 + 8B TE 9~11
 + 双 VAE 5.8 + corrector 8 会爆。官方也明确它是可选项，且对其他 H3 模型也有效。
+
+**实机补充（2026-11-26）**：用户把 `workflows/sulphur_t2v_8b_heretic.json` 拖进 Desktop
+实跑通过——这是 12 张 UI 工作流里第一张被实际点通的，证明生成的 UI 结构（含 SigmaShift 节点、
+euler widget、links）可被 0.46.3 正确加载。其余 11 张尚未逐张实点。
