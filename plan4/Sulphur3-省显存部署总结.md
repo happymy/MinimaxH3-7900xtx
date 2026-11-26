@@ -69,8 +69,14 @@ ClipProj v3.1 基准（297 次语音 + 405 次图像渲染）中 4B 与 8B 归�
 | `ComfyUI-ClipProj` | plan3（从旧环境复制，`c01ba8f` v0.1.4） | `ClipProjLoader`，4B TE + 矩阵投影到 32B 条件空间 |
 | `ComfyUI-ForceUnloadBeforeDecode` | plan1 复制 | 采样后 / 解码前两段清场 |
 
-`ClipProjLoader` 新增的两个输入：`device='cuda:0'`（`gpu_devices()` 在 ROCm 下返回 `cuda:0`）、
-`mode='dynamic'`（省显存档，可选 `resident` / `streaming`）。
+**4B GGUF 必须拆成两段加载**：`ClipProjLoader` 用的是原生 `folder_paths`，看不到 `.gguf`
+（API 实测 `clip_name` 列表为空）。脚本已改成 `CLIPLoaderGGUF`（读 4B GGUF）→ `ClipProjApply`（套 4B 矩阵）。
+
+**已修的节点 bug**：4B 编码器走 `Qwen3_4B` 类（`llama.py`），没有 `preprocess_embed`；
+`clipproj_nodes.py:202` 的 `install_video_blocks` 原先直接取该属性，T2V 首测报
+`AttributeError: 'Qwen3_4B' object has no attribute 'preprocess_embed'`。
+已改为 `getattr(tr, "preprocess_embed", None)`，缺失时跳过视频块 patch。
+`shortcut: 4B 纯 T2V 不产生 image embed；I2V/R2V 需换 8B (boogu) 编码器`。
 
 ## 6. 脚本改动（`bat\gen_sulphur.py`）
 

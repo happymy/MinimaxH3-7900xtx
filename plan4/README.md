@@ -40,7 +40,10 @@ Sulphur 3 是**标准非 Turbo 的 H3 fine-tune**，采样范式与 plan1 的 20
 - [x] 小模型：4B TE + mmproj + 4B 矩阵 + 音频 VAE（从 plan1 复制）
 - [x] 大模型：Sulphur Q4_K_M（11,564,180,576 B）、视频 VAE int8（2,811,065,184 B）
 - [x] `gguf` 包已装进 `.venv`（0.19.0，阿里云镜像；ComfyUI-GGUF 节点依赖）
-- [ ] 用 **Comfy Desktop** 启动 + 首测（480P / 124 帧 / 20 步）
+- [x] Desktop 启动参数已生效（`/system_stats` argv 已确认 5 条全在）
+- [x] 首测发现并修复：`ClipProjLoader` 看不到 GGUF → 改 `CLIPLoaderGGUF` + `ClipProjApply`；
+      4B `Qwen3_4B` 缺 `preprocess_embed` → `install_video_blocks` 加 `getattr` 跳过
+- [ ] 重启后重跑首测（480P / 124 帧 / 20 步）
 
 ## 5. 重要边界
 

@@ -34,7 +34,7 @@ API = 'http://127.0.0.1:8188'
 # 本地 API 直连：系统代理 127.0.0.1:26561 不放行 loopback 会回 404；
 # 空 ProxyHandler 同时绕过环境变量与注册表代理，不依赖启动方式。
 OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-FFMPEG = r'C:\Users\GAME\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg.Shared_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-9.0.2-full_build-shared\bin\ffmpeg.exe'
+FFMPEG = r'C:\Users\GAME\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg.Shared_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-9.1-full_build-shared\bin\ffmpeg.exe'
 
 # 模型文件（与 molbal_workflows/test 里 t2v/i2v 模板一致）
 GGUF_UNET = 'Sulphur-3-Q4_K_M.gguf'
@@ -57,11 +57,12 @@ def frames_for(duration):
 def build_graph(prompt, width, height, length, steps, seed, first_frame=None):
     """构造与 minimax_h3_t2v-gguf 模板同构的 API 图；i>0 时接 LoadImage -> first_frame。"""
     n = {'1': {'class_type': 'UnetLoaderGGUF', 'inputs': {'unet_name': GGUF_UNET}},
-         '2': {'class_type': 'ClipProjLoader', 'inputs': {'clip_name': CLIP_NAME, 'type': CLIP_TYPE, 'projection': CLIP_PROJ, 'device': 'cuda:0', 'mode': 'dynamic'}},
+         '2': {'class_type': 'CLIPLoaderGGUF', 'inputs': {'clip_name': CLIP_NAME, 'type': CLIP_TYPE}},
+         '2b': {'class_type': 'ClipProjApply', 'inputs': {'clip': ['2', 0], 'projection': CLIP_PROJ}},
          '3': {'class_type': 'VAELoader', 'inputs': {'vae_name': VIDEO_VAE}},
          '4': {'class_type': 'VAELoader', 'inputs': {'vae_name': AUDIO_VAE}},
          '5': {'class_type': 'MiniMaxH3ImageToVideo', 'inputs': {
-             'clip': ['2', 0], 'vae': ['3', 0],
+             'clip': ['2b', 0], 'vae': ['3', 0],
              'prompt': prompt, 'width': width, 'height': height, 'length': length}},
          '6': {'class_type': 'ForceUnloadBeforeDecode', 'inputs': {'latent': ['5', 1]}},
          '7': {'class_type': 'BasicGuider', 'inputs': {'model': ['1', 0], 'conditioning': ['5', 0]}},
