@@ -14,9 +14,29 @@
 | 文件 / 目录 | 内容 |
 |---|---|
 | `Sulphur3-省显存部署总结.md` | **主文档**。环境、选型、模型清单、节点、启动参数、省显存决策、未验证项 |
-| `bat\gen_sulphur.py` | API 直连生成脚本（从 `plan\bat\multisegment\` 改造，只换模型常量与 ClipProj 节点） |
+| `API_workflows\` | **4 条 API payload**：`sulphur_{t2v,i2v,flf2v,ref2v}.json`，`/prompt` 的 inner graph |
+| `workflows\` | **4 张 UI 工作流**：同名 JSON，可拖进 Desktop 界面编辑 |
+| `tools\make_workflows.py` | 从 API graph 生成上述 8 个 JSON（需 ComfyUI 在线读 `/object_info`） |
+| `bat\gen_sulphur.py` | 多段生成（t2v / 首帧续接），首测脚本 |
+| `bat\run_workflow.py` | 通用提交器，读任意 `API_workflows` 图，支持 4 种任务 |
 | `bat\run_sulphur.bat` | 启动器（4 段 × 5 s / 864×480 / 20 步） |
 | `bat\prompt.txt` | 提示词（从 plan1 复制） |
+| `bat\gen_extract_frames.py` | 抽帧工具（ffmpeg 路径已修为 9.1） |
+| `bat\gen_h3_qc_frames.py` | 帧质检工具（ffmpeg 路径已修为 9.1） |
+| `bat\free_vram.py` | `/free` 显存释放工具 |
+| `bat\step0_free.py` | step 0 卸 DiT 钩子（plan3 无预览版移植，支持 `--install/--revert`） |
+
+**4 条工作流与原生节点**：
+
+| 任务 | 关键节点 | 输入 |
+|---|---|---|
+| t2v | `MiniMaxH3ImageToVideo` | 纯提示词 |
+| i2v | + `LoadImage → first_frame` | 首帧图 |
+| flf2v | + `LoadImage ×2 → first_frame / last_frame` | 首尾帧 |
+| ref2v | + `MiniMaxH3AddGuide(frame_idx=0, vae, image)` | 参考图 |
+
+四条共用同一套省显存链路：`UnetLoaderGGUF` → `CLIPLoaderGGUF` + `ClipProjApply` → 双 VAE → 20 步 `simple` / `res_multistep` / cfg 1.0。
+未移植 plan1 的 8B / 8B-heretic 变体——它们与「尽量省显存」目标冲突，plan4 只保留 4B 档。
 
 ## 2. 一句话结论
 
@@ -41,9 +61,12 @@ Sulphur 3 是**标准非 Turbo 的 H3 fine-tune**，采样范式与 plan1 的 20
 - [x] 大模型：Sulphur Q4_K_M（11,564,180,576 B）、视频 VAE int8（2,811,065,184 B）
 - [x] `gguf` 包已装进 `.venv`（0.19.0，阿里云镜像；ComfyUI-GGUF 节点依赖）
 - [x] Desktop 启动参数已生效（`/system_stats` argv 已确认 5 条全在）
+- [x] 首测通过：864×480 / 124 帧 / 20 步 / seed `3538674239439636468` = **315.3 s**，产物正常
 - [x] 首测发现并修复：`ClipProjLoader` 看不到 GGUF → 改 `CLIPLoaderGGUF` + `ClipProjApply`；
-      4B `Qwen3_4B` 缺 `preprocess_embed` → `install_video_blocks` 加 `getattr` 跳过
-- [ ] 重启后重跑首测（480P / 124 帧 / 20 步）
+      4B `Qwen3_4B` 缺 `preprocess_embed` → `install_video_blocks` 加 `getattr` 跳过；ffmpeg 9.0.2 → 9.1
+- [x] 4 条 API + 4 张 UI 工作流已生成，通用提交器与 3 个工具脚本已就位
+- [x] step0 卸载 A/B：同 seed 315.3 s → 330.5 s（+4.8%），显存确实释放；短片净亏，长片才值
+- [x] 当前钩子状态：已装（`step0_free.py --revert` 可恢复快档）
 
 ## 5. 重要边界
 
