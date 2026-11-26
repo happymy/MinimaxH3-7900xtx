@@ -72,6 +72,7 @@ def frames_for(duration):
 def build_graph(prompt, width, height, length, steps, seed, first_frame=None):
     """构造与 minimax_h3_t2v-gguf 模板同构的 API 图；i>0 时接 LoadImage -> first_frame。"""
     n = {'1': {'class_type': 'UnetLoaderGGUF', 'inputs': {'unet_name': GGUF_UNET}},
+    '1b': {'class_type': 'MiniMaxH3SigmaShift', 'inputs': {'model': ['1b', 0], 'shift_video': 12.0, 'shift_audio': 3.0}},
          '2': {'class_type': 'ClipProjLoader', 'inputs': {'clip_name': CLIP_NAME, 'type': CLIP_TYPE, 'projection': CLIP_PROJ, 'device': 'cuda:0', 'mode': 'dynamic'}},
          '3': {'class_type': 'VAELoader', 'inputs': {'vae_name': VIDEO_VAE}},
          '4': {'class_type': 'VAELoader', 'inputs': {'vae_name': AUDIO_VAE}},
@@ -79,9 +80,9 @@ def build_graph(prompt, width, height, length, steps, seed, first_frame=None):
              'clip': ['2', 0], 'vae': ['3', 0],
              'prompt': prompt, 'width': width, 'height': height, 'length': length}},
          '6': {'class_type': 'ForceUnloadBeforeDecode', 'inputs': {'latent': ['5', 1]}},
-         '7': {'class_type': 'BasicGuider', 'inputs': {'model': ['1', 0], 'conditioning': ['5', 0]}},
-         '8': {'class_type': 'BasicScheduler', 'inputs': {'model': ['1', 0], 'scheduler': 'simple', 'steps': steps, 'denoise': 1}},
-         '9': {'class_type': 'KSamplerSelect', 'inputs': {'sampler_name': 'res_multistep'}},
+         '7': {'class_type': 'BasicGuider', 'inputs': {'model': ['1b', 0], 'conditioning': ['5', 0]}},
+         '8': {'class_type': 'BasicScheduler', 'inputs': {'model': ['1b', 0], 'scheduler': 'simple', 'steps': steps, 'denoise': 1}},
+         '9': {'class_type': 'KSamplerSelect', 'inputs': {'sampler_name': 'euler'}},
          '10': {'class_type': 'RandomNoise', 'inputs': {'noise_seed': seed}},
          '11': {'class_type': 'SamplerCustomAdvanced', 'inputs': {
              'noise': ['10', 0], 'guider': ['7', 0], 'sampler': ['9', 0], 'sigmas': ['8', 0], 'latent_image': ['6', 0]}},

@@ -1,0 +1,43 @@
+{
+  "subjects": [
+    {
+      "label": "school-age girl",
+      "appearance": "about eleven years old, long straight black hair parted down the centre and falling to her chest, oval face, dark brown almond-shaped eyes, fair skin, calm closed-lip smile, crisp white short-sleeved school shirt with navy piped collar and small black buttons, navy A-line pleated skirt just above the knee, opaque white tights, black patent Mary Jane shoes with small metal buckles",
+      "position": "exact centre of frame, full body, standing alone on a seamless pure-white studio backdrop with generous clear space above her head and on both sides",
+      "motion": "holds one upright stance with legs together, arms resting straight down at her sides, hands relaxed and open with fingers naturally separated; never steps, turns, or gestures",
+      "interaction": "calm closed-lip smile, facing the camera"
+    }
+  ],
+  "objects": [],
+  "environment": {
+    "setting": "seamless pure-white studio backdrop",
+    "layout": "full-body centred composition, generous negative space on all sides",
+    "background": "clean even white backdrop free of seams or marks from edge to edge",
+    "foreground": "white floor with a faint soft contact shadow beneath her shoes"
+  },
+  "camera": {
+    "framing": "locked-off full-body shot",
+    "angle": "eye-level frontal",
+    "movement": "completely static; framing, focal length, and angle do not shift and the horizon stays fixed"
+  },
+  "temporal": {
+    "overall_action": "the girl stands perfectly still in the white studio, the only motion coming from quiet breathing and occasional blinking",
+    "motion_sequence": [
+      "she holds the same centred upright stance from the first frame",
+      "a slow steady rise and fall of her chest as she breathes",
+      "a slow blink every few seconds",
+      "a light drift of loose strands of hair beside her cheek"
+    ]
+  },
+  "audio_context": [
+    "quiet empty studio room tone running continuously",
+    "faint soft rustle of cotton fabric and a light breath each time her chest rises"
+  ],
+  "salient_details": [
+    "exactly one person visible, fully specified and centred",
+    "broad diffused frontal illumination from a large softbox spreads even light across face and uniform",
+    "frame edges razor-sharp with zero softening",
+    "fabric weave of shirt and skirt and individual hair strands resolved",
+    "no captions, no logos, no on-screen text of any kind"
+  ]
+}

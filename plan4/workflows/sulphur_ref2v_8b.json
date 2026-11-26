@@ -1,8 +1,8 @@
 {
  "id": "sulphur_ref2v_8b",
  "revision": 0,
- "last_node_id": 19,
- "last_link_id": 24,
+ "last_node_id": 20,
+ "last_link_id": 25,
  "nodes": [
   {
    "id": 1,
@@ -24,8 +24,7 @@
      "name": "MODEL",
      "type": "MODEL",
      "links": [
-      4,
-      6
+      24
      ]
     }
    ],
@@ -56,7 +55,7 @@
      "name": "CLIP",
      "type": "CLIP",
      "links": [
-      24
+      25
      ]
     }
    ],
@@ -327,7 +326,7 @@
     "Node name for S&R": "KSamplerSelect"
    },
    "widgets_values": [
-    "res_multistep"
+    "euler"
    ]
   },
   {
@@ -706,7 +705,7 @@
   },
   {
    "id": 19,
-   "type": "ClipProjApply",
+   "type": "MiniMaxH3SigmaShift",
    "pos": [
     980,
     1120
@@ -720,9 +719,48 @@
    "mode": 0,
    "inputs": [
     {
+     "name": "model",
+     "type": "MODEL",
+     "link": 24
+    }
+   ],
+   "outputs": [
+    {
+     "name": "MODEL",
+     "type": "MODEL",
+     "links": [
+      4,
+      6
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "MiniMaxH3SigmaShift"
+   },
+   "widgets_values": [
+    12.0,
+    3.0
+   ]
+  },
+  {
+   "id": 20,
+   "type": "ClipProjApply",
+   "pos": [
+    80,
+    1380
+   ],
+   "size": [
+    270,
+    120
+   ],
+   "flags": {},
+   "order": 19,
+   "mode": 0,
+   "inputs": [
+    {
      "name": "clip",
      "type": "CLIP",
-     "link": 24
+     "link": 25
     }
    ],
    "outputs": [
@@ -745,7 +783,7 @@
  "links": [
   [
    1,
-   19,
+   20,
    0,
    5,
    0,
@@ -769,7 +807,7 @@
   ],
   [
    4,
-   1,
+   19,
    0,
    7,
    0,
@@ -785,7 +823,7 @@
   ],
   [
    6,
-   1,
+   19,
    0,
    8,
    0,
@@ -929,9 +967,17 @@
   ],
   [
    24,
-   2,
+   1,
    0,
    19,
+   0,
+   "MODEL"
+  ],
+  [
+   25,
+   2,
+   0,
+   20,
    0,
    "CLIP"
   ]

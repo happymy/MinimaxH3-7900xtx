@@ -153,6 +153,8 @@ plan1 在 11.42 GB DiT 上跑通 480P/124 帧/20 步（370.6 s），Sulphur Q4_K
 | `workflows/` | 同名 12 张 UI 图，可拖进 Desktop |
 | `tools/make_workflows.py` | 读 `/object_info` 生成上述 24 个 JSON（需 ComfyUI 在线） |
 | `tools/migrate_8b.py` | 从 plan1 移植 8 个 8B 脚本的一次性工具 |
+| `tools/apply_s3_params.py` | 套 S3 官方采样参数（SigmaShift + Euler），幂等 |
+| `bat/prompt_s3.json` | S3 官方结构化 JSON 提示词（推荐） |
 | `bat/run_workflow.py` | 通用提交器，读任一 API 图，支持 12 种组合 |
 | `bat/gen_sulphur.py` | 多段生成（首测脚本，4B 档） |
 | `bat/gen_h3_{multisegment,ref2va,scenes,scenes_ref}-8b*.py` | 8 个 8B / 8B-heretic 脚本 |
@@ -181,3 +183,26 @@ ref2va 脚本的两个 DiT 常量都指向主权重：官方 `s3_ref2va` 标注 
 
 跨墙判据是 s/it 与 `Model Initializing` 耗时（×3 起步），不是 `vram_free`（plan3 那档还剩 8.84 GB）。
 要 20 s 走脚本的 4×5 s 分段（约 21 min），别单段 481 帧。
+
+### 9.5 S3 官方工作流与提示词核对（2026-11-26）
+
+核实 `SulphurAI/Sulphur-3` 仓库文件树与 `S3_ComfyUI.zip`：
+
+- `S3_ComfyUI.zip` 只有 3 个文件：`__init__.py`、`corrector.py`、`example_workflow.json`，
+  **是 corrector 的节点与示例图，不是主模型的生成工作流**。README 明确
+  「run s3 as a regular MiniMax H3 model. That's all you need」。
+- 仓库没有独立的 prompt skill 文件；但 `example_workflow.json` 的 note 写明 S3 pipeline
+  用**结构化 JSON captions**（由 S3 的 prompt enhancer 生成），schema 为
+  `subjects / objects / environment / camera / temporal / audio_context / salient_details`。
+- 采样参数：CFG 1（guidance-distilled，negative prompt 在 CFG 1 下被忽略）、
+  **Euler**、simple schedule、**shift_video 12 / shift_audio 3**。
+
+此前 plan4 用的是 plan1 的 `res_multistep` 且无 SigmaShift 节点——不报错，但不是官方推荐路径。
+已按官方修正：所有脚本与 12 条工作流插入 `MiniMaxH3SigmaShift(12, 3)`，sampler 改 `euler`；
+`bat\prompt_s3.json` 按官方 schema 重写当前提示词（保留原 `prompt.txt` 供对照）。
+
+`tools\apply_s3_params.py` 是幂等补丁；改动只在 plan4 资产内，未动 plan1/plan3。
+
+**Corrector 暂不装**：`s3_corrector.safetensors` = 7,988,398,520 B（7.44 GiB），
+官方 note 说 fp32 常驻约 8 GB（bf16 会改变输出）。24 GB 卡上 DiT 11.6 + 8B TE 9~11
++ 双 VAE 5.8 + corrector 8 会爆。官方也明确它是可选项，且对其他 H3 模型也有效。

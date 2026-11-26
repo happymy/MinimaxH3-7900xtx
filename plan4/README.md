@@ -18,11 +18,13 @@
 | `workflows\` | **12 张 UI 工作流**：同名 JSON，可拖进 Desktop 界面编辑 |
 | `tools\make_workflows.py` | 从 API graph 生成上述 24 个 JSON（需 ComfyUI 在线读 `/object_info`） |
 | `tools\migrate_8b.py` | 从 plan1 移植 8B / 8B-heretic 脚本族的一次性工具 |
+| `tools\apply_s3_params.py` | 套用 S3 官方采样参数（SigmaShift + Euler），幂等 |
 | `bat\gen_sulphur.py` | 多段生成（t2v / 首帧续接），首测脚本 |
 | `bat\gen_h3_{multisegment,ref2va,scenes,scenes_ref}-8b*.py` | plan1 的 8 个 8B / 8B-heretic 脚本，模型常量已换 Sulphur |
 | `bat\run_workflow.py` | 通用提交器，读任意 `API_workflows` 图，支持 12 种组合 |
 | `bat\run_sulphur.bat` | 启动器（4 段 × 5 s / 864×480 / 20 步） |
-| `bat\prompt.txt` | 提示词（从 plan1 复制） |
+| `bat\prompt.txt` | 原 H3 三段式提示词（integrated_multimodal_description 等） |
+| `bat\prompt_s3.json` | **S3 官方结构化 JSON 提示词**（推荐，见 §9.5） |
 | `bat\gen_extract_frames.py` | 抽帧工具（ffmpeg 路径已修为 9.1） |
 | `bat\gen_h3_qc_frames.py` | 帧质检工具（ffmpeg 路径已修为 9.1） |
 | `bat\free_vram.py` | `/free` 显存释放工具 |
@@ -82,6 +84,26 @@ Sulphur 3 是**标准非 Turbo 的 H3 fine-tune**，采样范式与 plan1 的 20
 - [x] 8B / 8B-heretic 脚本族 8 个已移植（int8 编码器 + Sulphur 权重 + int8 VAE）
 - [x] step0 卸载 A/B：同 seed 315.3 s → 330.5 s（+4.8%），显存确实释放；短片净亏，长片才值
 - [x] 当前钩子状态：已装（`step0_free.py --revert` 可恢复快档）
+
+## 6. S3 官方参数与提示词（2026-11-26 核实）
+
+官方 `S3_ComfyUI.zip/example_workflow.json` 的说明写明：
+
+| 项 | S3 官方 | 此前 plan4（错） |
+|---|---|---|
+| sampler | **euler** | res_multistep（plan1 基线）/ er_sde（ref2va） |
+| shift | **video 12 / audio 3** | 无 SigmaShift 节点 |
+| schedule | simple | simple ✓ |
+| CFG | 1（guidance-distilled，negative prompt 被忽略） | 1 ✓ |
+| 提示词 | **结构化 JSON captions**（S3 prompt enhancer 生成） | H3 三段式（integrated_multimodal_description） |
+
+已修正：所有脚本与 12 条工作流插入 `MiniMaxH3SigmaShift(12, 3)`，sampler 改 `euler`；
+新增 `bat\prompt_s3.json`（按官方 schema 重写当前提示词）。
+
+`tools\apply_s3_params.py` 是幂等补丁，重跑不会重复插入节点。
+
+**Corrector 暂不装**：`s3_corrector.safetensors` 7.44 GB，fp32 常驻约 8 GB；
+24 GB 卡上 DiT 11.6 + 8B TE 9~11 + VAE 5.5 + corrector 8 会爆。官方也明确它是可选项。
 
 ## 5. 重要边界
 

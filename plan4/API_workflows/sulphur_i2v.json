@@ -5,6 +5,17 @@
    "unet_name": "Sulphur-3-Q4_K_M.gguf"
   }
  },
+ "1b": {
+  "class_type": "MiniMaxH3SigmaShift",
+  "inputs": {
+   "model": [
+    "1",
+    0
+   ],
+   "shift_video": 12.0,
+   "shift_audio": 3.0
+  }
+ },
  "2": {
   "class_type": "CLIPLoaderGGUF",
   "inputs": {
@@ -68,7 +79,7 @@
   "class_type": "BasicGuider",
   "inputs": {
    "model": [
-    "1",
+    "1b",
     0
    ],
    "conditioning": [
@@ -81,7 +92,7 @@
   "class_type": "BasicScheduler",
   "inputs": {
    "model": [
-    "1",
+    "1b",
     0
    ],
    "scheduler": "simple",
@@ -92,7 +103,7 @@
  "9": {
   "class_type": "KSamplerSelect",
   "inputs": {
-   "sampler_name": "res_multistep"
+   "sampler_name": "euler"
   }
  },
  "10": {

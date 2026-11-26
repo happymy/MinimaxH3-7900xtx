@@ -48,6 +48,8 @@ def base_graph(te=TE, proj=PROJ, clip_cls="CLIPLoaderGGUF"):
     ctype = "krea2" if clip_cls == "CLIPLoaderGGUF" else "boogu"
     return {
         "1": {"class_type": "UnetLoaderGGUF", "inputs": {"unet_name": UNET}},
+        "1b": {"class_type": "MiniMaxH3SigmaShift", "inputs": {
+            "model": ["1", 0], "shift_video": 12.0, "shift_audio": 3.0}},
         "2": {"class_type": clip_cls, "inputs": {"clip_name": te, "type": ctype}},
         "2b": {"class_type": "ClipProjApply", "inputs": {"clip": ["2", 0], "projection": proj}},
         "3": {"class_type": "VAELoader", "inputs": {"vae_name": VVAE}},
@@ -56,10 +58,10 @@ def base_graph(te=TE, proj=PROJ, clip_cls="CLIPLoaderGGUF"):
             "clip": ["2b", 0], "vae": ["3", 0], "prompt": prompt,
             "width": W, "height": H, "length": LENGTH}},
         "6": {"class_type": "ForceUnloadBeforeDecode", "inputs": {"latent": ["5", 1]}},
-        "7": {"class_type": "BasicGuider", "inputs": {"model": ["1", 0], "conditioning": ["5", 0]}},
+        "7": {"class_type": "BasicGuider", "inputs": {"model": ["1b", 0], "conditioning": ["5", 0]}},
         "8": {"class_type": "BasicScheduler", "inputs": {
-            "model": ["1", 0], "scheduler": "simple", "steps": STEPS, "denoise": 1}},
-        "9": {"class_type": "KSamplerSelect", "inputs": {"sampler_name": "res_multistep"}},
+            "model": ["1b", 0], "scheduler": "simple", "steps": STEPS, "denoise": 1}},
+        "9": {"class_type": "KSamplerSelect", "inputs": {"sampler_name": "euler"}},
         "10": {"class_type": "RandomNoise", "inputs": {"noise_seed": SEED}},
         "11": {"class_type": "SamplerCustomAdvanced", "inputs": {
             "noise": ["10", 0], "guider": ["7", 0], "sampler": ["9", 0],
