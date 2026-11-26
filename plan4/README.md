@@ -85,6 +85,7 @@ Sulphur 3 是**标准非 Turbo 的 H3 fine-tune**，20 步采样范式与 plan1 
 - [x] 12 条 API + 12 张 UI 工作流已生成并同步到 `C:\plan4`；通用提交器与工具脚本已就位
 - [x] 8B / 8B-heretic 脚本族 8 个已移植（Sulphur 权重 + int8 VAE + int8 编码器）
 - [x] 用户实测 `workflows/sulphur_t2v_8b_heretic.json` 拖进 Desktop **可跑**（2026-11-26）
+- [x] 新实测（step 0 卸 DiT + 长提示词）：**480P × 10 s = 723 s**、**720P × 5 s = 900 s**（主文档 §9.6）
 - [x] step0 卸载 A/B：同 seed 315.3 s → 330.5 s（+4.8%），显存确实释放；短片净亏，长片才值
       （同为旧参数下的对照）
 - [x] 当前钩子状态：**已装**（`step0_free.py --revert` 可恢复快档）
